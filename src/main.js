@@ -9319,9 +9319,12 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
     closeButton.style.boxShadow = '';
   }, { passive: true });
 
-  closeButton.onclick = () => {
-    artExtractorOverlay.remove();
+  closeButton.onclick = async () => {
+    // Clean up preview rectangle
+    await ArtExtractor.updatePreviewRectangle(templateManager);
     ArtExtractor.clearExtractorCoordinates();
+    ArtExtractor.clearPreviewTemplate();
+    artExtractorOverlay.remove();
   };
 
   // Content area
@@ -9569,7 +9572,7 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
   extractButton.className = 'bmae-btn-extract';
   extractButton.disabled = true;
 
-  const updateDimensionsDisplay = () => {
+  const updateDimensionsDisplay = async () => {
     const coords = ArtExtractor.getExtractorCoordinates();
     if (coords.from && coords.to) {
       const dimensions = ArtExtractor.calculateDimensions(coords.from, coords.to);
@@ -9577,11 +9580,17 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       document.getElementById('bm-ae-height').textContent = dimensions.height.toLocaleString();
       document.getElementById('bm-ae-total').textContent = dimensions.pixels.toLocaleString();
       extractButton.disabled = false;
+      
+      // Update preview rectangle on canvas
+      await ArtExtractor.updatePreviewRectangle(templateManager);
     } else {
       document.getElementById('bm-ae-width').textContent = '-';
       document.getElementById('bm-ae-height').textContent = '-';
       document.getElementById('bm-ae-total').textContent = '-';
       extractButton.disabled = true;
+      
+      // Clear preview rectangle
+      await ArtExtractor.updatePreviewRectangle(templateManager);
     }
   };
 

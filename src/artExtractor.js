@@ -7,6 +7,8 @@ let extractorCoordinates = {
   to: null
 };
 
+let previewTemplate = null; // Stores the temporary preview template
+
 export function getExtractorCoordinates() {
   return { ...extractorCoordinates };
 }
@@ -32,6 +34,14 @@ export function setToCoordinates(coords) {
 export function clearExtractorCoordinates() {
   extractorCoordinates.from = null;
   extractorCoordinates.to = null;
+}
+
+export function clearPreviewTemplate() {
+  previewTemplate = null;
+}
+
+export function getPreviewTemplate() {
+  return previewTemplate;
 }
 
 export function formatCoordinates(coords) {
@@ -195,4 +205,190 @@ export function startCoordinateDetection(type, callback, apiManager) {
   document.addEventListener('keydown', handleEscKey);
   
   return cleanup;
+}
+
+export async function updatePreviewRectangle(templateManager) {
+  // Clear any existing preview
+  if (previewTemplate) {
+    await templateManager.deleteTemplate(previewTemplate);
+    previewTemplate = null;
+  }
+
+  // Only create preview if both coordinates are set
+  if (!extractorCoordinates.from || !extractorCoordinates.to) {
+    return;
+  }
+
+  const dims = calculateDimensions(extractorCoordinates.from, extractorCoordinates.to);
+  if (dims.width <= 0 || dims.height <= 0) {
+    return;
+  }
+
+  const [fromTileX, fromTileY, fromPixelX, fromPixelY] = extractorCoordinates.from;
+  const [toTileX, toTileY, toPixelX, toPixelY] = extractorCoordinates.to;
+
+  // Calculate absolute pixel coordinates
+  const startX = fromTileX * 1000 + fromPixelX;
+  const startY = fromTileY * 1000 + fromPixelY;
+  const endX = toTileX * 1000 + toPixelX;
+  const endY = toTileY * 1000 + toPixelY;
+
+  // Determine which tiles we need to cover
+  const tileStartX = Math.floor(startX / 1000);
+  const tileStartY = Math.floor(startY / 1000);
+  const tileEndX = Math.floor(endX / 1000);
+  const tileEndY = Math.floor(endY / 1000);
+
+  // Create template JSON structure
+  const templateJSON = {
+    templates: {
+      '9999 extractor': {
+        name: '🎯 Art Extractor Preview',
+        coords: `${fromTileX}, ${fromTileY}, ${fromPixelX}, ${fromPixelY}`,
+        createdAt: new Date().toISOString(),
+        pixelCount: dims.pixels,
+        enabled: true,
+        disabledColors: [],
+        enhancedColors: [],
+        tiles: {}
+      }
+    }
+  };
+
+  // Create a tile for each tile in the range
+  for (let tileY = tileStartY; tileY <= tileEndY; tileY++) {
+    for (let tileX = tileStartX; tileX <= tileEndX; tileX++) {
+      // Calculate the portion of the rectangle that overlaps this tile
+      const tileAbsX = tileX * 1000;
+      const tileAbsY = tileY * 1000;
+      
+      const localStartX = Math.max(0, startX - tileAbsX);
+      const localStartY = Math.max(0, startY - tileAbsY);
+      const localEndX = Math.min(999, endX - tileAbsX);
+      const localEndY = Math.min(999, endY - tileAbsY);
+      
+      const tileWidth = localEndX - localStartX + 1;
+      const tileHeight = localEndY - localStartY + 1;
+      
+      console.log(`[Preview] Tile [${tileX},${tileY}]: localStart=[${localStartX},${localStartY}], localEnd=[${localEndX},${localEndY}], size=[${tileWidth}x${tileHeight}]`);
+      
+      if (tileWidth <= 0 || tileHeight <= 0) continue;
+
+      // Scale by drawMult (3) so the canvas matches the display size
+      const drawMult = 3;
+      const scaledWidth = tileWidth * drawMult;
+      const scaledHeight = tileHeight * drawMult;
+      
+      // Create canvas sized to the actual content, scaled for display
+      const canvas = new OffscreenCanvas(scaledWidth, scaledHeight);
+      const ctx = canvas.getContext('2d');
+      
+      // Draw semi-transparent green fill
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+      ctx.fillRect(0, 0, scaledWidth, scaledHeight);
+      
+      // Draw border on edges that are part of the outer rectangle
+      const borderWidth = 4 * drawMult;
+      ctx.lineWidth = borderWidth;
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
+      
+      // Top edge
+      if (tileY === tileStartY) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(scaledWidth, 0);
+        ctx.stroke();
+      }
+      
+      // Bottom edge
+      if (tileY === tileEndY) {
+        ctx.beginPath();
+        ctx.moveTo(0, scaledHeight);
+        ctx.lineTo(scaledWidth, scaledHeight);
+        ctx.stroke();
+      }
+      
+      // Left edge
+      if (tileX === tileStartX) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, scaledHeight);
+        ctx.stroke();
+      }
+      
+      // Right edge
+      if (tileX === tileEndX) {
+        ctx.beginPath();
+        ctx.moveTo(scaledWidth, 0);
+        ctx.lineTo(scaledWidth, scaledHeight);
+        ctx.stroke();
+      }
+      
+      // Draw corner markers
+      const markerSize = Math.min(20 * drawMult, Math.floor(Math.min(scaledWidth, scaledHeight) / 4));
+      ctx.strokeStyle = 'rgba(255, 255, 0, 0.9)';
+      ctx.lineWidth = 3 * drawMult;
+      
+      // Top-left corner
+      if (tileX === tileStartX && tileY === tileStartY) {
+        ctx.beginPath();
+        ctx.moveTo(0, markerSize);
+        ctx.lineTo(0, 0);
+        ctx.lineTo(markerSize, 0);
+        ctx.stroke();
+      }
+      
+      // Top-right corner
+      if (tileX === tileEndX && tileY === tileStartY) {
+        ctx.beginPath();
+        ctx.moveTo(scaledWidth - markerSize, 0);
+        ctx.lineTo(scaledWidth, 0);
+        ctx.lineTo(scaledWidth, markerSize);
+        ctx.stroke();
+      }
+      
+      // Bottom-left corner
+      if (tileX === tileStartX && tileY === tileEndY) {
+        ctx.beginPath();
+        ctx.moveTo(0, scaledHeight - markerSize);
+        ctx.lineTo(0, scaledHeight);
+        ctx.lineTo(markerSize, scaledHeight);
+        ctx.stroke();
+      }
+      
+      // Bottom-right corner
+      if (tileX === tileEndX && tileY === tileEndY) {
+        ctx.beginPath();
+        ctx.moveTo(scaledWidth - markerSize, scaledHeight);
+        ctx.lineTo(scaledWidth, scaledHeight);
+        ctx.lineTo(scaledWidth, scaledHeight - markerSize);
+        ctx.stroke();
+      }
+      
+      // Convert to blob
+      const blob = await canvas.convertToBlob({ type: 'image/png' });
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64 = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      // Use ABSOLUTE tile coordinates with pixel offsets (like muminek format)
+      // Format: "tileX,tileY,pixelX,pixelY"
+      const tileKey = `${tileX.toString().padStart(4, '0')},${tileY.toString().padStart(4, '0')},${localStartX.toString().padStart(3, '0')},${localStartY.toString().padStart(3, '0')}`;
+      
+      templateJSON.templates['9999 extractor'].tiles[tileKey] = base64;
+    }
+  }
+
+  // Import the template
+  await templateManager.importFromObject(templateJSON, { merge: true });
+  
+  // Store reference to the preview template key
+  previewTemplate = '9999 extractor';
+  
+  debugLog('[Art Extractor] Preview rectangle created:', { dims, tiles: Object.keys(templateJSON.templates['9999 extractor'].tiles) });
 }
