@@ -6,7 +6,7 @@ import Overlay from './Overlay.js';
 import Observers from './observers.js';
 import ApiManager from './apiManager.js';
 import TemplateManager from './templateManager.js';
-import {canvasPosToLatLng, debugLog, getDebugLoggingEnabled, saveDebugLoggingEnabled} from './utils.js';
+import {canvasPosToLatLng, debugLog, getDebugLoggingEnabled, saveDebugLoggingEnabled, updateColorAvailability, loadColorAvailability} from './utils.js';
 import * as icons from './icons.js';
 import {
     getCachedTileCount,
@@ -40,6 +40,7 @@ const consoleStyle = 'color: cornflowerblue;'; // The styling for the console lo
 const COLOR_SORTING_OPTIONS = [
   { value: 'default', text: 'Default Order' },
   { value: 'premium', text: 'Premium (Most Missing)' },
+  { value: 'available', text: 'Available Colors Only' },
   { value: 'enhanced', text: 'Enhanced Colors Only' },
   { value: 'wrong-desc', text: 'Most Wrong Colors' },
   { value: 'wrong-asc', text: 'Least Wrong Colors' },
@@ -5083,6 +5084,7 @@ function buildColorFilterOverlay() {
       colorItem.setAttribute('data-color-item', 'true');
       colorItem.setAttribute('data-color-name', colorInfo.name);
       colorItem.setAttribute('data-color-rgb', rgb.join(','));
+      colorItem.setAttribute('data-color-index', index.toString());
       
       colorItem.style.cssText = `
         background: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});
@@ -5544,6 +5546,7 @@ function buildColorFilterOverlay() {
       listItem.setAttribute('data-color-item', 'true');
       listItem.setAttribute('data-color-name', colorInfo.name);
       listItem.setAttribute('data-color-rgb', rgb.join(','));
+      listItem.setAttribute('data-color-index', index.toString());
       
       // Copy stats data attributes from grid item to list item
       if (colorItem.hasAttribute('data-wrong-count')) {
@@ -5973,7 +5976,20 @@ function buildColorFilterOverlay() {
         });
         return;
       }
-      
+
+        if (filterType === 'available') {
+            colorItems.forEach(item => {
+                const idx = parseInt(item.getAttribute('data-color-index') || '0');
+                const isAvailable = colorPalette[idx]?.isAvailable === true;
+                if (isAvailable !== false) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+            return;
+        }
+
       // Show all items for sorting
       colorItems.forEach(item => {
         item.style.display = 'flex';
@@ -6936,6 +6952,28 @@ function buildColorFilterOverlay() {
           sortedItems.forEach(item => {
             const isEnhanced = item.querySelector('input[type="checkbox"]').checked;
             item.style.display = isEnhanced ? 'flex' : 'none';
+          });
+          break;
+          
+        case 'available':
+          // Show all items first
+          sortedItems.forEach(item => {
+            item.style.display = 'flex';
+          });
+          sortedItems.sort((a, b) => {
+            const indexA = parseInt(a.getAttribute('data-original-index') || '0');
+            const indexB = parseInt(b.getAttribute('data-original-index') || '0');
+            const availableA = utils.colorpalette[indexA]?.isAvailable === true;
+            const availableB = utils.colorpalette[indexB]?.isAvailable === true;
+            if (availableA && !availableB) return -1;
+            if (!availableA && availableB) return 1;
+            return indexA - indexB;
+          });
+          // Filter to show only available colors
+          sortedItems.forEach(item => {
+            const index = parseInt(item.getAttribute('data-original-index') || '0');
+            const isAvailable = utils.colorpalette[index]?.isAvailable === true;
+            item.style.display = isAvailable ? 'flex' : 'none';
           });
           break;
           
@@ -11874,3 +11912,9 @@ if (document.readyState === 'loading') {
 } else {
   createSearchWindow();
 }
+
+// Load previously saved color availability from storage
+loadColorAvailability();
+
+// Update color availability every 5 seconds
+setInterval(updateColorAvailability, 5000);
