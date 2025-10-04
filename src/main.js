@@ -3978,7 +3978,7 @@ function buildOverlayMain() {
           // Art Extractor button
           .addButton({'id': 'bm-button-art-extractor', 'className': 'bm-help', innerHTML: icons.artExtractorIcon, 'title': 'Art Extractor'}, (instance, button) => {
             button.addEventListener('click', () => {
-              buildArtExtractorOverlay(apiManager);
+              buildArtExtractorOverlay(apiManager, templateManager);
             });
           }).buildElement()
         .buildElement()
@@ -9100,9 +9100,10 @@ function makeDraggable(modal, handle) {
 
 /** Builds and displays the Art Extractor overlay
  * @param {ApiManager} apiManager - The API manager instance
+ * @param {TemplateManager} templateManager - The template manager instance
  * @since 1.0.0
  */
-function buildArtExtractorOverlay(apiManager) {
+function buildArtExtractorOverlay(apiManager, templateManager) {
   // Remove existing overlay if present
   const existingOverlay = document.getElementById('bm-art-extractor-overlay');
   if (existingOverlay) {
@@ -9531,7 +9532,7 @@ function buildArtExtractorOverlay(apiManager) {
     }
   };
 
-  // Extract button (placeholder for now)
+  // Extract button
   const extractButton = document.createElement('button');
   extractButton.textContent = 'Extract Art';
   extractButton.className = 'bmae-btn-extract';
@@ -9549,13 +9550,44 @@ function buildArtExtractorOverlay(apiManager) {
       return;
     }
 
-    // TODO: Implement actual extraction
-    const result = await ArtExtractor.extractArt(coords.from, coords.to);
-    if (result.success) {
-      console.log('Extraction result:', result);
-      alert('Art extraction coming soon!');
-    } else {
-      alert(`Extraction failed: ${result.error}`);
+    // Show extraction progress
+    const dims = ArtExtractor.calculateDimensions(coords.from, coords.to);
+    extractButton.textContent = 'Extracting...';
+    extractButton.disabled = true;
+    
+    try {
+      // Extract art with progress tracking using templateManager
+      const blob = await ArtExtractor.extractArt(coords.from, coords.to, templateManager, apiManager, (current, total) => {
+        const percent = Math.round((current / total) * 100);
+        extractButton.textContent = `Extracting... ${percent}%`;
+      });
+      
+      if (blob) {
+        // Generate filename with timestamp and dimensions
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `wplace-art-${dims.width}x${dims.height}-${timestamp}.png`;
+        
+        // Download the extracted PNG
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        extractButton.textContent = 'Extract Art';
+        extractButton.disabled = false;
+        alert(`Art extracted successfully!\n${dims.width}×${dims.height} pixels\nSaved as: ${filename}`);
+      } else {
+        throw new Error('Extraction failed to produce a result');
+      }
+    } catch (error) {
+      console.error('Extraction error:', error);
+      extractButton.textContent = 'Extract Art';
+      extractButton.disabled = false;
+      alert(`Extraction failed: ${error.message}`);
     }
   });
 

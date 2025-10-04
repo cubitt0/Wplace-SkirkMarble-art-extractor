@@ -154,35 +154,45 @@ export function calculateDimensions(from, to) {
   };
 }
 
-/** Extract pixel art from canvas (placeholder for now)
- * @param {Array<number>} from - From coordinates
- * @param {Array<number>} to - To coordinates
- * @returns {Promise<{success: boolean, data: any, error: string|null}>}
+/** Extracts artwork from the canvas based on coordinates using templateManager's screenshot method
+ * @param {Array<number>} from - From coordinates [tileX, tileY, pixelX, pixelY]
+ * @param {Array<number>} to - To coordinates [tileX, tileY, pixelX, pixelY]
+ * @param {Object} templateManager - The templateManager instance with buildTemplateAreaScreenshot method
+ * @param {Object} apiManager - The API manager instance to get tileServerBase
+ * @param {Function} progressCallback - Optional callback for progress updates (not used with buildTemplateAreaScreenshot)
+ * @returns {Promise<Blob>} The extracted art as a PNG blob
  */
-export async function extractArt(from, to) {
-  debugLog('[Art Extractor] Extracting art from', from, 'to', to);
+export async function extractArt(from, to, templateManager, apiManager, progressCallback = null) {
+  debugLog('[Extract Art] Starting extraction...');
+  debugLog('[Extract Art] From:', from);
+  debugLog('[Extract Art] To:', to);
   
-  const validation = validateCoordinateRange(from, to);
-  if (!validation.valid) {
-    return { success: false, data: null, error: validation.error };
+  // Calculate dimensions
+  const dims = calculateDimensions(from, to);
+  debugLog(`[Extract Art] Area: ${dims.width}×${dims.height} pixels`);
+  
+  // Get tile server base URL
+  const tileServerBase = apiManager?.tileServerBase || 'https://backend.wplace.live/files/s0/tiles';
+  debugLog(`[Extract Art] Using tile server: ${tileServerBase}`);
+  
+  try {
+    // Use templateManager's existing buildTemplateAreaScreenshot method
+    // Signature: buildTemplateAreaScreenshot(tileServerBase, templateCoords, sizePx)
+    const blob = await templateManager.buildTemplateAreaScreenshot(
+      tileServerBase,              // Tile server base URL
+      from,                        // Starting coordinates [tileX, tileY, pixelX, pixelY]
+      [dims.width, dims.height]    // Size in pixels [width, height]
+    );
+    
+    debugLog(`[Extract Art] PNG blob created, size: ${blob.size} bytes`);
+    return blob;
+  } catch (error) {
+    debugLog('[Extract Art] Extraction failed:', error);
+    throw error;
   }
-  
-  const dimensions = calculateDimensions(from, to);
-  debugLog('[Art Extractor] Dimensions:', dimensions);
-  
-  // TODO: Implement actual extraction logic
-  return {
-    success: true,
-    data: {
-      from,
-      to,
-      dimensions
-    },
-    error: null
-  };
 }
 
-/** Start coordinate detection mode
+/** Starts coordinate detection for a specific coordinate type
  * @param {'from'|'to'} type - Which coordinate to detect
  * @param {Function} callback - Callback function when coordinates are detected
  * @param {Object} apiManager - API manager instance to get coordinates from
