@@ -2921,6 +2921,7 @@ export default class TemplateManager {
           const dstY = Math.max(0, tileOriginY - startY);
           const drawW = Math.min(tileSize - srcX, canvasW - dstX);
           const drawH = Math.min(tileSize - srcY, canvasH - dstY);
+          
           if (drawW > 0 && drawH > 0) {
             ctx.drawImage(
               bitmap,

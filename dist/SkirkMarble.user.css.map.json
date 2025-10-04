@@ -69,5 +69,14 @@
   "bm-name": "bm-13",
   "bm-button-compact-direct": "bm-1g",
   "bm-overlay-configs-overlay": "bm-1b",
-  "bm-coords-compact-icon": "bm-1t"
+  "bm-coords-compact-icon": "bm-1t",
+  "bm-art-extractor-overlay": "bm-1j",
+  "bm-button-art-extractor": "bm-1q",
+  "bm-art-extractor-styles": "bm-1t",
+  "bm-art-extractor-detection": "bm-1g",
+  "bm-ae-dimensions": "bm-20",
+  "bm-ae-coord-": "bm-2a",
+  "bm-ae-height": "bm-2b",
+  "bm-ae-width": "bm-2h",
+  "bm-ae-total": "bm-2i"
 }
