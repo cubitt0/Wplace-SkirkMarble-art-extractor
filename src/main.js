@@ -8,6 +8,7 @@ import ApiManager from './apiManager.js';
 import TemplateManager from './templateManager.js';
 import {canvasPosToLatLng, debugLog, getDebugLoggingEnabled, saveDebugLoggingEnabled, updateColorAvailability, loadColorAvailability} from './utils.js';
 import * as icons from './icons.js';
+import * as ArtExtractor from './artExtractor.js';
 import {
     getCachedTileCount,
     getSmartCacheStats,
@@ -3972,6 +3973,12 @@ function buildOverlayMain() {
           .addButton({'id': 'bm-button-settings-direct', 'className': 'bm-help', innerHTML: icons.settingsIcon, 'title': 'Settings (Quick Access)'}, (instance, button) => {
             button.addEventListener('click', () => {
               buildCrosshairSettingsOverlay();
+            });
+          }).buildElement()
+          // Art Extractor button
+          .addButton({'id': 'bm-button-art-extractor', 'className': 'bm-help', innerHTML: icons.artExtractorIcon, 'title': 'Art Extractor'}, (instance, button) => {
+            button.addEventListener('click', () => {
+              buildArtExtractorOverlay(apiManager);
             });
           }).buildElement()
         .buildElement()
@@ -8962,6 +8969,612 @@ function applyStoredOverlaySettings() {
  * @since 1.0.0
  */
 window.testOverlaySettings = () => applyStoredOverlaySettings();
+
+
+/** Helper function to make a modal draggable
+ * @param {HTMLElement} modal - The modal element to make draggable
+ * @param {HTMLElement} handle - The drag handle element
+ * @since 1.0.0
+ */
+function makeDraggable(modal, handle) {
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let modalStartX = 0;
+  let modalStartY = 0;
+
+  handle.style.cursor = 'move';
+  
+  handle.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    
+    // Get current computed position
+    const rect = modal.getBoundingClientRect();
+    modalStartX = rect.left;
+    modalStartY = rect.top;
+    
+    // Remove transform centering if present
+    if (modal.style.transform.includes('translate')) {
+      modal.style.left = modalStartX + 'px';
+      modal.style.top = modalStartY + 'px';
+      modal.style.transform = 'none';
+    }
+    
+    // Change cursor and prevent text selection
+    handle.style.cursor = 'grabbing';
+    modal.style.userSelect = 'none';
+    document.body.style.userSelect = 'none';
+    
+    e.preventDefault();
+  });
+
+  // Mouse move handler for dragging
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    
+    const deltaX = e.clientX - dragStartX;
+    const deltaY = e.clientY - dragStartY;
+    
+    const newLeft = modalStartX + deltaX;
+    const newTop = modalStartY + deltaY;
+    
+    // Keep within viewport bounds
+    const maxLeft = window.innerWidth - modal.offsetWidth;
+    const maxTop = window.innerHeight - modal.offsetHeight;
+    
+    modal.style.left = Math.max(0, Math.min(maxLeft, newLeft)) + 'px';
+    modal.style.top = Math.max(0, Math.min(maxTop, newTop)) + 'px';
+  };
+
+  // Mouse up handler to stop dragging
+  const handleMouseUp = () => {
+    if (!isDragging) return;
+    
+    isDragging = false;
+    handle.style.cursor = 'move';
+    modal.style.userSelect = '';
+    document.body.style.userSelect = '';
+    
+    // Update start positions for next drag
+    const rect = modal.getBoundingClientRect();
+    modalStartX = rect.left;
+    modalStartY = rect.top;
+  };
+
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+
+  // Touch support for mobile
+  handle.addEventListener('touchstart', (e) => {
+    const touch = e.touches[0];
+    isDragging = true;
+    dragStartX = touch.clientX;
+    dragStartY = touch.clientY;
+    
+    const rect = modal.getBoundingClientRect();
+    modalStartX = rect.left;
+    modalStartY = rect.top;
+    
+    // Remove transform centering if present
+    if (modal.style.transform.includes('translate')) {
+      modal.style.left = modalStartX + 'px';
+      modal.style.top = modalStartY + 'px';
+      modal.style.transform = 'none';
+    }
+    
+    modal.style.userSelect = 'none';
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - dragStartX;
+    const deltaY = touch.clientY - dragStartY;
+    
+    const newLeft = modalStartX + deltaX;
+    const newTop = modalStartY + deltaY;
+    
+    const maxLeft = window.innerWidth - modal.offsetWidth;
+    const maxTop = window.innerHeight - modal.offsetHeight;
+    
+    modal.style.left = Math.max(0, Math.min(maxLeft, newLeft)) + 'px';
+    modal.style.top = Math.max(0, Math.min(maxTop, newTop)) + 'px';
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    modal.style.userSelect = '';
+    
+    // Update start positions for next drag
+    const rect = modal.getBoundingClientRect();
+    modalStartX = rect.left;
+    modalStartY = rect.top;
+  });
+}
+
+
+/** Builds and displays the Art Extractor overlay
+ * @param {ApiManager} apiManager - The API manager instance
+ * @since 1.0.0
+ */
+function buildArtExtractorOverlay(apiManager) {
+  // Remove existing overlay if present
+  const existingOverlay = document.getElementById('bm-art-extractor-overlay');
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+  // Detect mobile mode
+  const isMobileMode = window.innerWidth <= 768;
+
+  // Ensure Art Extractor styles are loaded
+  if (!document.getElementById('bm-art-extractor-styles')) {
+    const artExtractorStyles = document.createElement('style');
+    artExtractorStyles.id = 'bm-art-extractor-styles';
+    artExtractorStyles.textContent = `
+      :root { 
+        --slate-50: #f8fafc; --slate-100: #f1f5f9; --slate-200: #e2e8f0; --slate-300: #cbd5e1; 
+        --slate-400: #94a3b8; --slate-500: #64748b; --slate-600: #475569; --slate-700: #334155; 
+        --slate-750: #293548; --slate-800: #1e293b; --slate-900: #0f172a; --slate-950: #020617;
+        --blue-400: #60a5fa; --blue-500: #3b82f6; --blue-600: #2563eb; --blue-700: #1d4ed8;
+        --emerald-400: #34d399; --emerald-500: #10b981; --emerald-600: #059669; --emerald-700: #047857;
+        --bmcf-bg: var(--slate-900); --bmcf-card: var(--slate-800); --bmcf-border: var(--slate-700); 
+        --bmcf-muted: var(--slate-400); --bmcf-text: var(--slate-100); --bmcf-text-muted: var(--slate-300);
+      }
+      .bmae-overlay { 
+        width: min(94vw, 670px); max-height: 88vh; background: var(--bmcf-bg, #0f172a); color: var(--bmcf-text, #f1f5f9); 
+        border-radius: 20px; border: 1px solid var(--bmcf-border, #334155); 
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05); 
+        display: flex; flex-direction: column; overflow: hidden; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+        backdrop-filter: blur(16px); position: relative;
+      }
+      .bmae-overlay::before {
+        content: ''; position: absolute; inset: 0; border-radius: 20px; 
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(16, 185, 129, 0.05)); 
+        pointer-events: none;
+      }
+      .bmae-header { 
+        display: flex; flex-direction: column; padding: 16px 20px 12px 20px; 
+        border-bottom: 1px solid var(--bmcf-border, #334155); 
+        background: linear-gradient(135deg, var(--slate-800, #1e293b), var(--slate-750, #293548)); 
+        position: relative; z-index: 1;
+      }
+      .bmae-content { padding: 20px; overflow: auto; position: relative; z-index: 1; flex: 1; }
+      .bmae-input {
+        flex: 1;
+        padding: 10px 12px;
+        background: var(--slate-800, #1e293b);
+        border: 1px solid var(--slate-700, #334155);
+        border-radius: 8px;
+        color: var(--slate-100, #f1f5f9);
+        font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        transition: all 0.2s ease;
+      }
+      .bmae-input:focus {
+        outline: none;
+        border-color: var(--blue-500, #3b82f6);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+      .bmae-btn-detect {
+        background: linear-gradient(135deg, var(--blue-600, #2563eb), var(--blue-700, #1d4ed8));
+        border: 1px solid var(--blue-500, #3b82f6);
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        flex-shrink: 0;
+      }
+      .bmae-btn-detect:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+      }
+      .bmae-btn-extract {
+        margin-top: 20px;
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, var(--emerald-600, #059669), var(--emerald-700, #047857));
+        border: 1px solid var(--emerald-500, #10b981);
+        color: white;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 15px;
+        font-weight: 600;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      .bmae-btn-extract:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+      }
+    `;
+    document.head.appendChild(artExtractorStyles);
+  }
+
+  // Create overlay container (modal wrapper)
+  const artExtractorOverlay = document.createElement('div');
+  artExtractorOverlay.id = 'bm-art-extractor-overlay';
+  artExtractorOverlay.style.cssText = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9001;
+    ${isMobileMode ? 'max-width: 95vw; max-height: 90vh;' : ''}
+  `;
+  artExtractorOverlay.className = 'bmae-overlay';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'bmae-header';
+
+  // Drag bar
+  const dragBar = document.createElement('div');
+  dragBar.className = 'bmae-drag-bar';
+  dragBar.style.cssText = `
+    background: linear-gradient(90deg, #475569 0%, #64748b 50%, #475569 100%);
+    border-radius: 4px;
+    cursor: grab;
+    width: 100%;
+    height: 6px;
+    margin-bottom: 8px;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+  `;
+
+  // Drag bar hover effect
+  dragBar.addEventListener('mouseenter', () => {
+    dragBar.style.opacity = '1';
+  });
+  dragBar.addEventListener('mouseleave', () => {
+    dragBar.style.opacity = '0.8';
+  });
+
+  // Container for title and close button
+  const titleContainer = document.createElement('div');
+  titleContainer.style.cssText = `
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  `;
+
+  const title = document.createElement('h2');
+  title.textContent = 'Art Extractor';
+  const titleFontSize = isMobileMode ? '1.2em' : '1.5em';
+  title.style.cssText = `
+    margin: 0; 
+    font-size: ${titleFontSize}; 
+    font-weight: 700;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    text-align: center;
+    flex: 1;
+    pointer-events: none;
+    letter-spacing: -0.025em;
+    color: #f1f5f9;
+    background: linear-gradient(135deg, #f1f5f9, #cbd5e1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  `;
+
+  const closeButton = document.createElement('button');
+  closeButton.textContent = '✕';
+  const buttonSize = isMobileMode ? '32px' : '36px';
+  const buttonFontSize = isMobileMode ? '14px' : '16px';
+  closeButton.style.cssText = `
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: white;
+    width: ${buttonSize};
+    height: ${buttonSize};
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: ${buttonFontSize};
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  `;
+
+  // Hover effects
+  closeButton.onmouseover = () => {
+    closeButton.style.transform = 'translateY(-1px) scale(1.05)';
+    closeButton.style.boxShadow = '0 6px 20px rgba(239, 68, 68, 0.4)';
+  };
+  closeButton.onmouseout = () => {
+    closeButton.style.transform = '';
+    closeButton.style.boxShadow = '';
+  };
+
+  closeButton.addEventListener('touchstart', () => {
+    closeButton.style.transform = '';
+    closeButton.style.boxShadow = '';
+  }, { passive: true });
+
+  closeButton.onclick = () => {
+    artExtractorOverlay.remove();
+    ArtExtractor.clearExtractorCoordinates();
+  };
+
+  // Content area
+  const content = document.createElement('div');
+  content.className = 'bmae-content';
+
+  // Create coordinate input groups with 4 separate fields
+  const createCoordinateGroup = (labelText, type) => {
+    const group = document.createElement('div');
+    group.style.cssText = `
+      margin-bottom: 24px;
+    `;
+
+    // Header row with label and detect button
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    `;
+
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    label.style.cssText = `
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--slate-200);
+      letter-spacing: 0.025em;
+    `;
+
+    const detectButton = document.createElement('button');
+    detectButton.innerHTML = icons.pointerIcon + ' Detect';
+    detectButton.title = 'Detect coordinates from canvas';
+    detectButton.className = 'bmae-btn-detect';
+    detectButton.style.cssText = `
+      background: linear-gradient(135deg, var(--blue-600, #2563eb), var(--blue-700, #1d4ed8));
+      border: 1px solid var(--blue-500, #3b82f6);
+      color: white;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      flex-shrink: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      width: auto;
+    `;
+
+    headerRow.appendChild(label);
+    headerRow.appendChild(detectButton);
+
+    // Input grid (4 fields: Tile X, Tile Y, Pixel X, Pixel Y)
+    const inputGrid = document.createElement('div');
+    inputGrid.style.cssText = `
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+    `;
+
+    // Create 4 number inputs
+    const inputs = [];
+    const placeholders = ['Tile X', 'Tile Y', 'Px X', 'Px Y'];
+    const ids = [`${type}-tx`, `${type}-ty`, `${type}-px`, `${type}-py`];
+
+    for (let i = 0; i < 4; i++) {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.placeholder = placeholders[i];
+      input.id = `bm-ae-coord-${ids[i]}`;
+      input.min = 0;
+      // Tile coordinates: -2048 to 2047, Pixel coordinates: 0 to 999
+      input.max = (i < 2) ? 2047 : 999;
+      input.step = 1;
+      input.className = 'bmae-input';
+      input.style.cssText = `
+        width: 100%;
+        height: 40px;
+        background: var(--slate-800, #1e293b);
+        border: 1px solid var(--slate-700, #334155);
+        color: var(--slate-100, #f1f5f9);
+        padding: 0 8px;
+        font-size: 13px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+        text-align: center;
+      `;
+
+      // Input blur handler - update coordinates
+      input.addEventListener('blur', () => {
+        updateCoordinatesFromInputs(type);
+      });
+
+      inputs.push(input);
+      inputGrid.appendChild(input);
+    }
+
+    let currentDetectionCleanup = null;
+
+    detectButton.addEventListener('click', () => {
+      // Clean up any existing detection
+      if (currentDetectionCleanup) {
+        currentDetectionCleanup();
+      }
+
+      // Start new detection - pass apiManager
+      currentDetectionCleanup = ArtExtractor.startCoordinateDetection(type, (coords) => {
+        // Set coordinates in inputs
+        inputs[0].value = coords[0]; // Tile X
+        inputs[1].value = coords[1]; // Tile Y
+        inputs[2].value = coords[2]; // Pixel X
+        inputs[3].value = coords[3]; // Pixel Y
+        
+        // Update state
+        if (type === 'from') {
+          ArtExtractor.setFromCoordinates(coords);
+        } else {
+          ArtExtractor.setToCoordinates(coords);
+        }
+        
+        // Update dimensions display
+        updateDimensionsDisplay();
+        
+        // Clear cleanup reference
+        currentDetectionCleanup = null;
+      }, apiManager);
+    });
+
+    group.appendChild(headerRow);
+    group.appendChild(inputGrid);
+
+    return { group, inputs };
+  };
+
+  // Function to update coordinates from individual inputs
+  const updateCoordinatesFromInputs = (type) => {
+    const txInput = document.getElementById(`bm-ae-coord-${type}-tx`);
+    const tyInput = document.getElementById(`bm-ae-coord-${type}-ty`);
+    const pxInput = document.getElementById(`bm-ae-coord-${type}-px`);
+    const pyInput = document.getElementById(`bm-ae-coord-${type}-py`);
+
+    const tx = parseInt(txInput.value);
+    const ty = parseInt(tyInput.value);
+    const px = parseInt(pxInput.value);
+    const py = parseInt(pyInput.value);
+
+    // Validate: pixel coordinates must be 0-999
+    if (!isNaN(tx) && !isNaN(ty) && !isNaN(px) && !isNaN(py)) {
+      // Clamp pixel values to valid range
+      const clampedPx = Math.max(0, Math.min(999, px));
+      const clampedPy = Math.max(0, Math.min(999, py));
+      
+      // Update inputs if clamped
+      if (px !== clampedPx) pxInput.value = clampedPx;
+      if (py !== clampedPy) pyInput.value = clampedPy;
+      
+      const coords = [tx, ty, clampedPx, clampedPy];
+      if (type === 'from') {
+        ArtExtractor.setFromCoordinates(coords);
+      } else {
+        ArtExtractor.setToCoordinates(coords);
+      }
+      updateDimensionsDisplay();
+    }
+  };
+
+  // Create "From" coordinate group
+  const fromGroup = createCoordinateGroup('Coordinates From (Top-Left)', 'from');
+  content.appendChild(fromGroup.group);
+
+  // Create "To" coordinate group
+  const toGroup = createCoordinateGroup('Coordinates To (Bottom-Right)', 'to');
+  content.appendChild(toGroup.group);
+
+  // Dimensions display
+  const dimensionsContainer = document.createElement('div');
+  dimensionsContainer.style.cssText = `
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: var(--slate-800);
+    border: 1px solid var(--slate-700);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--slate-300);
+  `;
+
+  const dimensionsText = document.createElement('div');
+  dimensionsText.id = 'bm-ae-dimensions';
+  dimensionsText.style.cssText = `
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  `;
+  dimensionsText.innerHTML = `
+    <div style="margin-bottom: 4px;"><strong>Width:</strong> <span id="bm-ae-width">-</span> pixels</div>
+    <div style="margin-bottom: 4px;"><strong>Height:</strong> <span id="bm-ae-height">-</span> pixels</div>
+    <div><strong>Total:</strong> <span id="bm-ae-total">-</span> pixels</div>
+  `;
+
+  dimensionsContainer.appendChild(dimensionsText);
+  content.appendChild(dimensionsContainer);
+
+  // Function to update dimensions display
+  const updateDimensionsDisplay = () => {
+    const coords = ArtExtractor.getExtractorCoordinates();
+    if (coords.from && coords.to) {
+      const dimensions = ArtExtractor.calculateDimensions(coords.from, coords.to);
+      document.getElementById('bm-ae-width').textContent = dimensions.width.toLocaleString();
+      document.getElementById('bm-ae-height').textContent = dimensions.height.toLocaleString();
+      document.getElementById('bm-ae-total').textContent = dimensions.pixels.toLocaleString();
+    } else {
+      document.getElementById('bm-ae-width').textContent = '-';
+      document.getElementById('bm-ae-height').textContent = '-';
+      document.getElementById('bm-ae-total').textContent = '-';
+    }
+  };
+
+  // Extract button (placeholder for now)
+  const extractButton = document.createElement('button');
+  extractButton.textContent = 'Extract Art';
+  extractButton.className = 'bmae-btn-extract';
+
+  extractButton.addEventListener('click', async () => {
+    const coords = ArtExtractor.getExtractorCoordinates();
+    if (!coords.from || !coords.to) {
+      alert('Please set both "From" and "To" coordinates');
+      return;
+    }
+
+    const validation = ArtExtractor.validateCoordinateRange(coords.from, coords.to);
+    if (!validation.valid) {
+      alert(`Invalid coordinates: ${validation.error}`);
+      return;
+    }
+
+    // TODO: Implement actual extraction
+    const result = await ArtExtractor.extractArt(coords.from, coords.to);
+    if (result.success) {
+      console.log('Extraction result:', result);
+      alert('Art extraction coming soon!');
+    } else {
+      alert(`Extraction failed: ${result.error}`);
+    }
+  });
+
+  content.appendChild(extractButton);
+
+  // Assemble the modal
+  titleContainer.appendChild(title);
+  titleContainer.appendChild(closeButton);
+  header.appendChild(dragBar);
+  header.appendChild(titleContainer);
+  
+  artExtractorOverlay.appendChild(header);
+  artExtractorOverlay.appendChild(content);
+  
+  document.body.appendChild(artExtractorOverlay);
+
+  // Make modal draggable
+  makeDraggable(artExtractorOverlay, header);
+}
 
 
 /** Builds and displays the crosshair settings overlay
