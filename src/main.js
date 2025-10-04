@@ -9199,6 +9199,18 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
       }
+      .bmae-btn-extract:disabled {
+        background: var(--slate-700, #334155);
+        border: 1px solid var(--slate-600, #475569);
+        color: var(--slate-500, #64748b);
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      .bmae-btn-extract:disabled:hover {
+        transform: none;
+        box-shadow: none;
+      }
     `;
     document.head.appendChild(artExtractorStyles);
   }
@@ -9517,7 +9529,46 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
   dimensionsContainer.appendChild(dimensionsText);
   content.appendChild(dimensionsContainer);
 
-  // Function to update dimensions display
+  const filenameContainer = document.createElement('div');
+  filenameContainer.style.cssText = `
+    margin-top: 16px;
+    margin-bottom: 16px;
+  `;
+
+  const filenameLabel = document.createElement('label');
+  filenameLabel.textContent = 'Filename (optional)';
+  filenameLabel.style.cssText = `
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--slate-300);
+  `;
+
+  const filenameInput = document.createElement('input');
+  filenameInput.type = 'text';
+  filenameInput.placeholder = 'Ben 10';
+  filenameInput.className = 'bmae-input';
+  filenameInput.style.cssText = `
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--slate-800);
+    border: 1px solid var(--slate-600);
+    border-radius: 8px;
+    color: var(--slate-100);
+    font-size: 14px;
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  `;
+
+  filenameContainer.appendChild(filenameLabel);
+  filenameContainer.appendChild(filenameInput);
+  content.appendChild(filenameContainer);
+
+  const extractButton = document.createElement('button');
+  extractButton.textContent = 'Extract';
+  extractButton.className = 'bmae-btn-extract';
+  extractButton.disabled = true;
+
   const updateDimensionsDisplay = () => {
     const coords = ArtExtractor.getExtractorCoordinates();
     if (coords.from && coords.to) {
@@ -9525,17 +9576,14 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       document.getElementById('bm-ae-width').textContent = dimensions.width.toLocaleString();
       document.getElementById('bm-ae-height').textContent = dimensions.height.toLocaleString();
       document.getElementById('bm-ae-total').textContent = dimensions.pixels.toLocaleString();
+      extractButton.disabled = false;
     } else {
       document.getElementById('bm-ae-width').textContent = '-';
       document.getElementById('bm-ae-height').textContent = '-';
       document.getElementById('bm-ae-total').textContent = '-';
+      extractButton.disabled = true;
     }
   };
-
-  // Extract button
-  const extractButton = document.createElement('button');
-  extractButton.textContent = 'Extract Art';
-  extractButton.className = 'bmae-btn-extract';
 
   extractButton.addEventListener('click', async () => {
     const coords = ArtExtractor.getExtractorCoordinates();
@@ -9563,11 +9611,11 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       });
       
       if (blob) {
-        // Generate filename with timestamp and dimensions
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        const filename = `wplace-art-${dims.width}x${dims.height}-${timestamp}.png`;
+        const customName = filenameInput.value.trim();
+        const filename = customName 
+          ? `${customName}.png`
+          : `wplace-art-${dims.width}x${dims.height}.png`;
         
-        // Download the extracted PNG
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -9577,15 +9625,14 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        extractButton.textContent = 'Extract Art';
+        extractButton.textContent = 'Extract';
         extractButton.disabled = false;
-        alert(`Art extracted successfully!\n${dims.width}×${dims.height} pixels\nSaved as: ${filename}`);
       } else {
         throw new Error('Extraction failed to produce a result');
       }
     } catch (error) {
       console.error('Extraction error:', error);
-      extractButton.textContent = 'Extract Art';
+      extractButton.textContent = 'Extract';
       extractButton.disabled = false;
       alert(`Extraction failed: ${error.message}`);
     }
