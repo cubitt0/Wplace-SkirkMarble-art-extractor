@@ -16,7 +16,8 @@ export function setFromCoordinates(coords) {
     console.warn('Invalid coordinates format. Expected [tileX, tileY, pixelX, pixelY]');
     return;
   }
-  extractorCoordinates.from = [...coords];
+  // Ensure all coordinates are stored as numbers
+  extractorCoordinates.from = coords.map(c => Number(c));
 }
 
 export function setToCoordinates(coords) {
@@ -24,7 +25,8 @@ export function setToCoordinates(coords) {
     console.warn('Invalid coordinates format. Expected [tileX, tileY, pixelX, pixelY]');
     return;
   }
-  extractorCoordinates.to = [...coords];
+  // Ensure all coordinates are stored as numbers
+  extractorCoordinates.to = coords.map(c => Number(c));
 }
 
 export function clearExtractorCoordinates() {
@@ -78,10 +80,6 @@ export function validateCoordinateRange(from, to) {
     return { valid: false, error: 'Invalid rectangle dimensions' };
   }
   
-  if (width > 10000 || height > 10000) {
-    return { valid: false, error: 'Rectangle too large (max 10000x10000 pixels)' };
-  }
-  
   return { valid: true, error: null };
 }
 
@@ -90,10 +88,15 @@ export function calculateDimensions(from, to) {
     return { width: 0, height: 0, pixels: 0 };
   }
   
-  const fromX = from[0] * 1000 + from[2];
-  const fromY = from[1] * 1000 + from[3];
-  const toX = to[0] * 1000 + to[2];
-  const toY = to[1] * 1000 + to[3];
+  if (!Array.isArray(from) || from.length !== 4 || !Array.isArray(to) || to.length !== 4) {
+    console.error('[Art Extractor] Invalid coordinate format:', { from, to });
+    return { width: 0, height: 0, pixels: 0 };
+  }
+
+  const fromX = Number(from[0]) * 1000 + Number(from[2]);
+  const fromY = Number(from[1]) * 1000 + Number(from[3]);
+  const toX = Number(to[0]) * 1000 + Number(to[2]);
+  const toY = Number(to[1]) * 1000 + Number(to[3]);
   
   const width = Math.max(0, toX - fromX + 1);
   const height = Math.max(0, toY - fromY + 1);
@@ -116,10 +119,9 @@ export async function extractArt(from, to, templateManager, apiManager, progress
       [dims.width, dims.height]
     );
     
-    debugLog(`[Art Extractor] Extracted ${dims.width}×${dims.height} pixels, ${blob.size} bytes`);
     return blob;
   } catch (error) {
-    debugLog('[Art Extractor] Extraction failed:', error);
+    console.error('[Art Extractor] Extraction failed:', error);
     throw error;
   }
 }
