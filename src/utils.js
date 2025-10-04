@@ -200,321 +200,458 @@ export const colorpalette = [
     "name": "Transparent",
     // Keep rgb as [0,0,0] for palette index consistency but mark as transparent
     "rgb": [0, 0, 0],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Black",
     "rgb": [0, 0, 0],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Gray",
     "rgb": [60, 60, 60],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Gray",
     "rgb": [120, 120, 120],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Gray",
     "rgb": [210, 210, 210],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "White",
     "rgb": [255, 255, 255],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Deep Red",
     "rgb": [96, 0, 24],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Red",
     "rgb": [237, 28, 36],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Orange",
     "rgb": [255, 127, 39],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Gold",
     "rgb": [246, 170, 9],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Yellow",
     "rgb": [249, 221, 59],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Yellow",
     "rgb": [255, 250, 188],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Green",
     "rgb": [14, 185, 104],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Green",
     "rgb": [19, 230, 123],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Green",
     "rgb": [135, 255, 94],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Teal",
     "rgb": [12, 129, 110],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Teal",
     "rgb": [16, 174, 166],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Teal",
     "rgb": [19, 225, 190],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Blue",
     "rgb": [40, 80, 158],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Blue",
     "rgb": [64, 147, 228],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Cyan",
     "rgb": [96, 247, 242],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Indigo",
     "rgb": [107, 80, 246],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Indigo",
     "rgb": [153, 177, 251],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Purple",
     "rgb": [120, 12, 153],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Purple",
     "rgb": [170, 56, 185],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Purple",
     "rgb": [224, 159, 249],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Pink",
     "rgb": [203, 0, 122],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Pink",
     "rgb": [236, 31, 128],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Light Pink",
     "rgb": [243, 141, 169],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Dark Brown",
     "rgb": [104, 70, 52],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Brown",
     "rgb": [149, 104, 42],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Beige",
     "rgb": [248, 178, 119],
-    "free": true
+    "free": true,
+    "isAvailable": null
   },
   {
     "name": "Medium Gray",
     "rgb": [170, 170, 170],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Red",
     "rgb": [165, 14, 30],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Red",
     "rgb": [250, 128, 114],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Orange",
     "rgb": [228, 92, 26],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Tan",
     "rgb": [214, 181, 148],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Goldenrod",
     "rgb": [156, 132, 49],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Goldenrod",
     "rgb": [197, 173, 49],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Goldenrod",
     "rgb": [232, 212, 95],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Olive",
     "rgb": [74, 107, 58],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Olive",
     "rgb": [90, 148, 74],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Olive",
     "rgb": [132, 197, 115],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Cyan",
     "rgb": [15, 121, 159],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Cyan",
     "rgb": [187, 250, 242],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Blue",
     "rgb": [125, 199, 255],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Indigo",
     "rgb": [77, 49, 184],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Slate Blue",
     "rgb": [74, 66, 132],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Slate Blue",
     "rgb": [122, 113, 196],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Slate Blue",
     "rgb": [181, 174, 241],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Brown",
     "rgb": [219, 164, 99],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Beige",
     "rgb": [209, 128, 81],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Beige",
     "rgb": [255, 197, 165],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Peach",
     "rgb": [155, 82, 73],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Peach",
     "rgb": [209, 128, 120],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Peach",
     "rgb": [250, 182, 164],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Tan",
     "rgb": [123, 99, 82],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Tan",
     "rgb": [156, 132, 107],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Slate",
     "rgb": [51, 57, 65],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Slate",
     "rgb": [109, 117, 141],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Slate",
     "rgb": [179, 185, 209],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Dark Stone",
     "rgb": [109, 100, 63],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Stone",
     "rgb": [148, 140, 107],
-    "free": false
+    "free": false,
+    "isAvailable": null
   },
   {
     "name": "Light Stone",
     "rgb": [205, 197, 158],
-    "free": false
+    "free": false,
+    "isAvailable": null
   }
 ];
+
+/**
+ * Loads color availability data from storage and applies it to colorpalette
+ * @since 1.0.0
+ */
+export function loadColorAvailability() {
+  try {
+    let savedData = null;
+
+    if (typeof GM_getValue !== 'undefined') {
+      savedData = GM_getValue('bmColorAvailability', null);
+    }
+
+    if (!savedData) {
+      savedData = localStorage.getItem('bmColorAvailability');
+    }
+    
+    if (savedData) {
+      const availabilityMap = JSON.parse(savedData);
+      Object.keys(availabilityMap).forEach(colorId => {
+        const id = parseInt(colorId);
+        if (colorpalette[id]) {
+          colorpalette[id].isAvailable = availabilityMap[colorId];
+        }
+      });
+    }
+  } catch (error) {
+      debugLog(error)
+  }
+}
+
+/**
+ * Saves color availability data to storage
+ * @since 1.0.0
+ */
+function saveColorAvailability() {
+  try {
+    const availabilityMap = {};
+    colorpalette.forEach((color, index) => {
+      if (color.isAvailable !== null) {
+        availabilityMap[index] = color.isAvailable;
+      }
+    });
+    
+    const dataString = JSON.stringify(availabilityMap);
+
+    if (typeof GM_setValue !== 'undefined') {
+      GM_setValue('bmColorAvailability', dataString);
+    }
+
+    localStorage.setItem('bmColorAvailability', dataString);
+  } catch (error) {
+    debugLog(error)
+  }
+}
+
+export function updateColorAvailability() {
+  const colorButtons = document.querySelectorAll('button[id^="color-"]');
+  if (colorButtons.length === 0) {
+    return;
+  }
+
+  colorButtons.forEach(button => {
+    const colorId = parseInt(button.id.replace('color-', ''));
+    const hasLockIcon = button.querySelector('svg') !== null;
+
+    if (colorpalette[colorId]) {
+      colorpalette[colorId].isAvailable = !hasLockIcon;
+    }
+  });
+
+  saveColorAvailability();
+}
