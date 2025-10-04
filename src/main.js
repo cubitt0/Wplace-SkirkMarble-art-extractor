@@ -9320,9 +9320,8 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
   }, { passive: true });
 
   closeButton.onclick = async () => {
-    // Clean up preview rectangle
-    await ArtExtractor.updatePreviewRectangle(templateManager);
     ArtExtractor.clearExtractorCoordinates();
+    await ArtExtractor.updatePreviewRectangle(templateManager);
     ArtExtractor.clearPreviewTemplate();
     artExtractorOverlay.remove();
   };
@@ -9402,7 +9401,6 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       input.placeholder = placeholders[i];
       input.id = `bm-ae-coord-${ids[i]}`;
       input.min = 0;
-      // Tile coordinates: -2048 to 2047, Pixel coordinates: 0 to 999
       input.max = (i < 2) ? 2047 : 999;
       input.step = 1;
       input.className = 'bmae-input';
@@ -9420,7 +9418,6 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
         text-align: center;
       `;
 
-      // Input blur handler - update coordinates
       input.addEventListener('blur', () => {
         updateCoordinatesFromInputs(type);
       });
@@ -9432,30 +9429,23 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
     let currentDetectionCleanup = null;
 
     detectButton.addEventListener('click', () => {
-      // Clean up any existing detection
       if (currentDetectionCleanup) {
         currentDetectionCleanup();
       }
 
-      // Start new detection - pass apiManager
       currentDetectionCleanup = ArtExtractor.startCoordinateDetection(type, (coords) => {
-        // Set coordinates in inputs
-        inputs[0].value = coords[0]; // Tile X
-        inputs[1].value = coords[1]; // Tile Y
-        inputs[2].value = coords[2]; // Pixel X
-        inputs[3].value = coords[3]; // Pixel Y
+        inputs[0].value = coords[0];
+        inputs[1].value = coords[1];
+        inputs[2].value = coords[2];
+        inputs[3].value = coords[3];
         
-        // Update state
         if (type === 'from') {
           ArtExtractor.setFromCoordinates(coords);
         } else {
           ArtExtractor.setToCoordinates(coords);
         }
         
-        // Update dimensions display
         updateDimensionsDisplay();
-        
-        // Clear cleanup reference
         currentDetectionCleanup = null;
       }, apiManager);
     });
@@ -9467,7 +9457,7 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
   };
 
   // Function to update coordinates from individual inputs
-  const updateCoordinatesFromInputs = (type) => {
+  const updateCoordinatesFromInputs = async (type) => {
     const txInput = document.getElementById(`bm-ae-coord-${type}-tx`);
     const tyInput = document.getElementById(`bm-ae-coord-${type}-ty`);
     const pxInput = document.getElementById(`bm-ae-coord-${type}-px`);
@@ -9495,18 +9485,16 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
         ArtExtractor.setToCoordinates(coords);
       }
       updateDimensionsDisplay();
+      await ArtExtractor.updatePreviewRectangle(templateManager);
     }
   };
 
-  // Create "From" coordinate group
   const fromGroup = createCoordinateGroup('Coordinates From (Top-Left)', 'from');
   content.appendChild(fromGroup.group);
 
-  // Create "To" coordinate group
   const toGroup = createCoordinateGroup('Coordinates To (Bottom-Right)', 'to');
   content.appendChild(toGroup.group);
 
-  // Dimensions display
   const dimensionsContainer = document.createElement('div');
   dimensionsContainer.style.cssText = `
     margin-top: 16px;
@@ -9580,16 +9568,12 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       document.getElementById('bm-ae-height').textContent = dimensions.height.toLocaleString();
       document.getElementById('bm-ae-total').textContent = dimensions.pixels.toLocaleString();
       extractButton.disabled = false;
-      
-      // Update preview rectangle on canvas
       await ArtExtractor.updatePreviewRectangle(templateManager);
     } else {
       document.getElementById('bm-ae-width').textContent = '-';
       document.getElementById('bm-ae-height').textContent = '-';
       document.getElementById('bm-ae-total').textContent = '-';
       extractButton.disabled = true;
-      
-      // Clear preview rectangle
       await ArtExtractor.updatePreviewRectangle(templateManager);
     }
   };
@@ -9607,13 +9591,13 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       return;
     }
 
-    // Show extraction progress
+    await ArtExtractor.updatePreviewRectangle(templateManager);
+    
     const dims = ArtExtractor.calculateDimensions(coords.from, coords.to);
     extractButton.textContent = 'Extracting...';
     extractButton.disabled = true;
     
     try {
-      // Extract art with progress tracking using templateManager
       const blob = await ArtExtractor.extractArt(coords.from, coords.to, templateManager, apiManager, (current, total) => {
         const percent = Math.round((current / total) * 100);
         extractButton.textContent = `Extracting... ${percent}%`;

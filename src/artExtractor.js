@@ -208,13 +208,14 @@ export function startCoordinateDetection(type, callback, apiManager) {
 }
 
 export async function updatePreviewRectangle(templateManager) {
-  // Clear any existing preview
   if (previewTemplate) {
     await templateManager.deleteTemplate(previewTemplate);
     previewTemplate = null;
+    
+    // Small delay to ensure deletion is complete and caches are cleared
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 
-  // Only create preview if both coordinates are set
   if (!extractorCoordinates.from || !extractorCoordinates.to) {
     return;
   }
@@ -242,7 +243,7 @@ export async function updatePreviewRectangle(templateManager) {
   // Create template JSON structure
   const templateJSON = {
     templates: {
-      '9999 extractor': {
+      '10000 extractor-preview': {
         name: '🎯 Art Extractor Preview',
         coords: `${fromTileX}, ${fromTileY}, ${fromPixelX}, ${fromPixelY}`,
         createdAt: new Date().toISOString(),
@@ -255,10 +256,8 @@ export async function updatePreviewRectangle(templateManager) {
     }
   };
 
-  // Create a tile for each tile in the range
   for (let tileY = tileStartY; tileY <= tileEndY; tileY++) {
     for (let tileX = tileStartX; tileX <= tileEndX; tileX++) {
-      // Calculate the portion of the rectangle that overlaps this tile
       const tileAbsX = tileX * 1000;
       const tileAbsY = tileY * 1000;
       
@@ -270,25 +269,16 @@ export async function updatePreviewRectangle(templateManager) {
       const tileWidth = localEndX - localStartX + 1;
       const tileHeight = localEndY - localStartY + 1;
       
-      console.log(`[Preview] Tile [${tileX},${tileY}]: localStart=[${localStartX},${localStartY}], localEnd=[${localEndX},${localEndY}], size=[${tileWidth}x${tileHeight}]`);
-      
       if (tileWidth <= 0 || tileHeight <= 0) continue;
 
-      // Scale by drawMult (3) so the canvas matches the display size
       const drawMult = 3;
       const scaledWidth = tileWidth * drawMult;
       const scaledHeight = tileHeight * drawMult;
       
-      // Create canvas sized to the actual content, scaled for display
       const canvas = new OffscreenCanvas(scaledWidth, scaledHeight);
       const ctx = canvas.getContext('2d');
       
-      // Draw semi-transparent green fill
-      ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
-      ctx.fillRect(0, 0, scaledWidth, scaledHeight);
-      
-      // Draw border on edges that are part of the outer rectangle
-      const borderWidth = 4 * drawMult;
+      const borderWidth = 1 * drawMult;
       ctx.lineWidth = borderWidth;
       ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
       
@@ -324,51 +314,8 @@ export async function updatePreviewRectangle(templateManager) {
         ctx.stroke();
       }
       
-      // Draw corner markers
-      const markerSize = Math.min(20 * drawMult, Math.floor(Math.min(scaledWidth, scaledHeight) / 4));
-      ctx.strokeStyle = 'rgba(255, 255, 0, 0.9)';
-      ctx.lineWidth = 3 * drawMult;
-      
-      // Top-left corner
-      if (tileX === tileStartX && tileY === tileStartY) {
-        ctx.beginPath();
-        ctx.moveTo(0, markerSize);
-        ctx.lineTo(0, 0);
-        ctx.lineTo(markerSize, 0);
-        ctx.stroke();
-      }
-      
-      // Top-right corner
-      if (tileX === tileEndX && tileY === tileStartY) {
-        ctx.beginPath();
-        ctx.moveTo(scaledWidth - markerSize, 0);
-        ctx.lineTo(scaledWidth, 0);
-        ctx.lineTo(scaledWidth, markerSize);
-        ctx.stroke();
-      }
-      
-      // Bottom-left corner
-      if (tileX === tileStartX && tileY === tileEndY) {
-        ctx.beginPath();
-        ctx.moveTo(0, scaledHeight - markerSize);
-        ctx.lineTo(0, scaledHeight);
-        ctx.lineTo(markerSize, scaledHeight);
-        ctx.stroke();
-      }
-      
-      // Bottom-right corner
-      if (tileX === tileEndX && tileY === tileEndY) {
-        ctx.beginPath();
-        ctx.moveTo(scaledWidth - markerSize, scaledHeight);
-        ctx.lineTo(scaledWidth, scaledHeight);
-        ctx.lineTo(scaledWidth, scaledHeight - markerSize);
-        ctx.stroke();
-      }
-      
-      // Convert to blob
       const blob = await canvas.convertToBlob({ type: 'image/png' });
       
-      // Convert blob to base64
       const reader = new FileReader();
       const base64 = await new Promise((resolve, reject) => {
         reader.onload = () => resolve(reader.result.split(',')[1]);
@@ -376,19 +323,12 @@ export async function updatePreviewRectangle(templateManager) {
         reader.readAsDataURL(blob);
       });
       
-      // Use ABSOLUTE tile coordinates with pixel offsets (like muminek format)
-      // Format: "tileX,tileY,pixelX,pixelY"
       const tileKey = `${tileX.toString().padStart(4, '0')},${tileY.toString().padStart(4, '0')},${localStartX.toString().padStart(3, '0')},${localStartY.toString().padStart(3, '0')}`;
       
-      templateJSON.templates['9999 extractor'].tiles[tileKey] = base64;
+      templateJSON.templates['10000 extractor-preview'].tiles[tileKey] = base64;
     }
   }
 
-  // Import the template
   await templateManager.importFromObject(templateJSON, { merge: true });
-  
-  // Store reference to the preview template key
-  previewTemplate = '9999 extractor';
-  
-  debugLog('[Art Extractor] Preview rectangle created:', { dims, tiles: Object.keys(templateJSON.templates['9999 extractor'].tiles) });
+  previewTemplate = '10000 extractor-preview';
 }
