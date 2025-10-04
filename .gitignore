@@ -401,3 +401,11 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/.gitignore
+/.idea/material_theme_project_new.xml
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/php.xml
+/.idea/vcs.xml
+/.idea/Wplace-SkirkMarble.iml

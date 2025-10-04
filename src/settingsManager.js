@@ -602,3 +602,54 @@ export function saveDragModeEnabled(enabled) {
     console.error('Failed to save drag mode setting:', error);
   }
 }
+
+/** Gets the default color filter sorting method from storage
+ * @returns {string} Default sorting method
+ * @since 1.0.0
+ */
+export function getDefaultColorSorting() {
+  try {
+    let defaultSorting = null;
+
+    if (typeof GM_getValue !== 'undefined') {
+      const saved = GM_getValue('bmDefaultColorSorting', null);
+      if (saved !== null) defaultSorting = JSON.parse(saved);
+    }
+
+    if (defaultSorting === null) {
+      const saved = localStorage.getItem('bmDefaultColorSorting');
+      if (saved !== null) defaultSorting = JSON.parse(saved);
+    }
+    
+    if (defaultSorting !== null) {
+      debugLog('Default color sorting setting loaded:', defaultSorting);
+      return defaultSorting;
+    }
+  } catch (error) {
+    console.warn('Failed to load default color sorting setting:', error);
+  }
+
+  debugLog('Using default color sorting setting: default');
+  return 'default';
+}
+
+/** Saves the default color filter sorting method to storage
+ * @param {string} sortingMethod - The default sorting method to use
+ * @since 1.0.0
+ */
+export function saveDefaultColorSorting(sortingMethod) {
+  try {
+    const sortingString = JSON.stringify(sortingMethod);
+
+    if (typeof GM_setValue !== 'undefined') {
+      GM_setValue('bmDefaultColorSorting', sortingString);
+    }
+
+    localStorage.setItem('bmDefaultColorSorting', sortingString);
+    
+    debugLog('Default color sorting setting saved:', sortingMethod);
+    invalidateCache();
+  } catch (error) {
+    console.error('Failed to save default color sorting setting:', error);
+  }
+}
