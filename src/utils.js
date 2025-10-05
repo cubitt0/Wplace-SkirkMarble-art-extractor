@@ -34,17 +34,6 @@ export function serverTPtoDisplayTP(tile, pixel) {
   return [((parseInt(tile[0]) % 4) * 1000) + parseInt(pixel[0]), ((parseInt(tile[1]) % 4) * 1000) + parseInt(pixel[1])];
 }
 
-/** Negative-Safe Modulo. You can pass negative numbers into this.
- * @param {number} a - The first number
- * @param {number} b - The second number
- * @returns {number} Result
- * @author osuplace
- * @since 0.55.8
- */
-export function negativeSafeModulo(a, b) {
-  return (a % b + b) % b;
-}
-
 /** Gets the debug logging enabled setting from storage
  * @returns {boolean} Whether debug logging is enabled
  * @since 1.0.0 

@@ -1,8 +1,9 @@
 {
-  "name": "wplace-skirkmarble",
-  "version": "0.90.4",
-  "author": "Seris0",
+  "name": "wplace-skirkmarble-art-extractor",
+  "version": "0.91.0",
+  "author": "cubitt0",
   "contributors": [
+    "Seris0",
     "Hao-1337",
     "pixelkat5"
   ],

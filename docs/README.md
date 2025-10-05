@@ -1,14 +1,22 @@
-# Skirk Cuz I like her XD
-<img width="1469" height="810" alt="SkirkFinished" src="https://github.com/user-attachments/assets/e1a19e25-3dbf-44f0-92b1-7ac59fdf3857" />
+# Blue Marble - Art Extractor Fork
 
+Enhanced fork of Blue Marble userscript for wplace.live with powerful new features.
 
-# Skirk Marble - FORK SUMMARY
+## 🎨 New Feature: Art Extractor
 
-This Blue Marble fork adds several improvements focused on user experience and productivity for wplace.live.
+Extract pixel art from any area of the canvas to PNG format with precision and ease.
+
+### Art Extractor Features
+
+- **📍 Click-to-Detect Coordinates:** Click "Detect" buttons to pick coordinates directly from the canvas
+- **📐 Real-Time Dimensions:** See width, height, and total pixel count as you select the area
+- **🔄 Multi-Tile Support:** Extract large areas spanning multiple tiles seamlessly
+
+---
 
 ## Installation
 
-**Important:** Remove the original Blue Marble before installing Skirk Marble to avoid conflicts between scripts.
+**Important:** Remove the original Blue Marble before installing this fork to avoid conflicts between scripts.
 
 ## Individual Color Progress
 
