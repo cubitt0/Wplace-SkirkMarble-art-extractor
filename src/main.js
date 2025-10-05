@@ -8965,12 +8965,6 @@ function applyStoredOverlaySettings() {
 
 
 
-/** Manual test function for overlay settings (console only)
- * @since 1.0.0
- */
-window.testOverlaySettings = () => applyStoredOverlaySettings();
-
-
 /** Helper function to make a modal draggable
  * @param {HTMLElement} modal - The modal element to make draggable
  * @param {HTMLElement} handle - The drag handle element

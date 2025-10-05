@@ -40,35 +40,6 @@ export function clearPreviewTemplate() {
   previewTemplate = null;
 }
 
-export function getPreviewTemplate() {
-  return previewTemplate;
-}
-
-export function formatCoordinates(coords) {
-  if (!coords || !Array.isArray(coords) || coords.length !== 4) {
-    return '';
-  }
-  return coords.map(c => c.toString().padStart(4, '0')).join(', ');
-}
-
-export function parseCoordinates(coordString) {
-  if (!coordString || typeof coordString !== 'string') {
-    return null;
-  }
-  
-  const parts = coordString.split(',').map(s => s.trim()).filter(s => s !== '');
-  if (parts.length !== 4) {
-    return null;
-  }
-  
-  const coords = parts.map(p => parseInt(p, 10));
-  if (coords.some(c => isNaN(c))) {
-    return null;
-  }
-  
-  return coords;
-}
-
 export function validateCoordinateRange(from, to) {
   if (!from || !to) {
     return { valid: false, error: 'Both coordinates must be set' };
