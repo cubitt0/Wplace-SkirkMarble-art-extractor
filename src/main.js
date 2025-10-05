@@ -6218,7 +6218,11 @@ function buildColorFilterOverlay() {
 
     // Add event listener for filter select
     filterSelect.addEventListener('change', () => {
-      applyFilter(filterSelect.value);
+      const selectedSort = filterSelect.value;
+      applyFilter(selectedSort);
+      // Automatically save the selected sorting option for next time
+      saveDefaultColorSorting(selectedSort);
+      debugLog('Color filter sorting saved:', selectedSort);
     });
 
     // Enable/Disable all functionality
@@ -11222,87 +11226,6 @@ function buildCrosshairSettingsOverlay() {
   collapseSection.appendChild(collapseDescription);
   collapseSection.appendChild(collapseToggle);
 
-  // Default Color Sorting Section
-  const defaultSortingSection = document.createElement('div');
-  defaultSortingSection.style.cssText = `
-    background: linear-gradient(135deg, var(--slate-800), var(--slate-750));
-    border: 1px solid var(--slate-700);
-    border-radius: ${sectionBorderRadius};
-    padding: ${sectionPadding};
-    margin-bottom: ${sectionMargin};
-    position: relative;
-    z-index: 1;
-  `;
-
-  const defaultSortingLabel = document.createElement('div');
-  defaultSortingLabel.textContent = 'Default Color Sorting:';
-  defaultSortingLabel.style.cssText = `
-    font-size: 1em; 
-    margin-bottom: 12px; 
-    color: var(--slate-200);
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  `;
-
-  const defaultSortingDescription = document.createElement('div');
-  defaultSortingDescription.textContent = 'Choose how colors are sorted by default when opening the Color Filter menu.';
-  defaultSortingDescription.style.cssText = `
-    font-size: 0.9em; 
-    color: var(--slate-300); 
-    margin-bottom: 16px; 
-    line-height: 1.4;
-    letter-spacing: -0.005em;
-  `;
-
-  let tempDefaultSorting = getDefaultColorSorting();
-
-  const sortingSelect = document.createElement('select');
-  sortingSelect.style.cssText = `
-    width: 100%;
-    padding: 10px 14px;
-    border: 2px solid var(--slate-600);
-    border-radius: 8px;
-    background: var(--slate-700);
-    color: var(--slate-100);
-    font-size: 0.95em;
-    font-weight: 500;
-    outline: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  `;
-
-  sortingSelect.onfocus = () => {
-    sortingSelect.style.borderColor = 'var(--blue-500)';
-    sortingSelect.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.2)';
-  };
-  sortingSelect.onblur = () => {
-    sortingSelect.style.borderColor = 'var(--slate-600)';
-    sortingSelect.style.boxShadow = '';
-  };
-
-    COLOR_SORTING_OPTIONS.forEach(option => {
-    const optionElement = document.createElement('option');
-    optionElement.value = option.value;
-    optionElement.textContent = option.text;
-    optionElement.style.cssText = `
-      background: var(--slate-700);
-      color: var(--slate-100);
-      padding: 8px;
-    `;
-    sortingSelect.appendChild(optionElement);
-  });
-
-  sortingSelect.value = tempDefaultSorting;
-
-  sortingSelect.onchange = () => {
-    tempDefaultSorting = sortingSelect.value;
-    debugLog('Default color sorting changed to:', tempDefaultSorting);
-  };
-
-  defaultSortingSection.appendChild(defaultSortingLabel);
-  defaultSortingSection.appendChild(defaultSortingDescription);
-  defaultSortingSection.appendChild(sortingSelect);
-
   // Create fixed footer with action buttons
   const footerContainer = document.createElement('div');
   const footerPadding = isMobileMode ? '10px 12px' : '16px 20px';
@@ -11371,8 +11294,7 @@ function buildCrosshairSettingsOverlay() {
       tempCollapseMinEnabled !== currentCollapseSaved ||
       tempMobileMode !== currentMobileSaved ||
       tempShowLeftOnColor !== getShowLeftOnColorEnabled() ||
-      tempNavigationMethod !== Settings.getNavigationMethod() ||
-      tempDefaultSorting !== getDefaultColorSorting();
+      tempNavigationMethod !== Settings.getNavigationMethod();
     
     if (hasChanges) {
       if (confirm('Discard changes? Any unsaved settings will be lost.')) {
@@ -11424,7 +11346,7 @@ function buildCrosshairSettingsOverlay() {
     
     try {
       // Save all settings
-      debugLog('Updating settings:', { color: tempColor, borders: tempBorderEnabled, miniTracker: tempMiniTrackerEnabled, collapse: tempCollapseMinEnabled, mobile: tempMobileMode, showLeftOnColor: tempShowLeftOnColor, navigation: tempNavigationMethod, debug: tempDebugEnabled, smartCache: tempCacheEnabled, defaultSorting: tempDefaultSorting });
+      debugLog('Updating settings:', { color: tempColor, borders: tempBorderEnabled, miniTracker: tempMiniTrackerEnabled, collapse: tempCollapseMinEnabled, mobile: tempMobileMode, showLeftOnColor: tempShowLeftOnColor, navigation: tempNavigationMethod, debug: tempDebugEnabled, smartCache: tempCacheEnabled });
       
       saveCrosshairColor(tempColor);
       saveBorderEnabled(tempBorderEnabled);
@@ -11436,7 +11358,6 @@ function buildCrosshairSettingsOverlay() {
       saveShowLeftOnColorEnabled(tempShowLeftOnColor);
       Settings.saveNavigationMethod(tempNavigationMethod);
       saveDebugLoggingEnabled(tempDebugEnabled);
-      saveDefaultColorSorting(tempDefaultSorting);
       
       // Apply smart tile cache setting
       if (getSmartCacheStats().enabled !== tempCacheEnabled) {
@@ -11709,7 +11630,6 @@ function buildCrosshairSettingsOverlay() {
   contentContainer.appendChild(mobileSection);
   contentContainer.appendChild(leftOnColorSection);
   contentContainer.appendChild(collapseSection);
-  contentContainer.appendChild(defaultSortingSection);
 
   // Navigation method section
   const navigationSection = document.createElement('div');

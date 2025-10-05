@@ -658,8 +658,8 @@ export function saveDragModeEnabled(enabled) {
   }
 }
 
-/** Gets the default color filter sorting method from storage
- * @returns {string} Default sorting method
+/** Gets the last used color filter sorting method from storage
+ * @returns {string} Last used sorting method (defaults to 'default')
  * @since 1.0.0
  */
 export function getDefaultColorSorting() {
@@ -677,19 +677,19 @@ export function getDefaultColorSorting() {
     }
     
     if (defaultSorting !== null) {
-      debugLog('Default color sorting setting loaded:', defaultSorting);
+      debugLog('Last used color sorting loaded:', defaultSorting);
       return defaultSorting;
     }
   } catch (error) {
-    console.warn('Failed to load default color sorting setting:', error);
+    console.warn('Failed to load last used color sorting:', error);
   }
 
-  debugLog('Using default color sorting setting: default');
+  debugLog('Using default color sorting: default');
   return 'default';
 }
 
-/** Saves the default color filter sorting method to storage
- * @param {string} sortingMethod - The default sorting method to use
+/** Saves the last used color filter sorting method to storage (automatically saved when user changes sorting)
+ * @param {string} sortingMethod - The sorting method to save
  * @since 1.0.0
  */
 export function saveDefaultColorSorting(sortingMethod) {
@@ -702,9 +702,9 @@ export function saveDefaultColorSorting(sortingMethod) {
 
     localStorage.setItem('bmDefaultColorSorting', sortingString);
     
-    debugLog('Default color sorting setting saved:', sortingMethod);
+    debugLog('Last used color sorting saved:', sortingMethod);
     invalidateCache();
   } catch (error) {
-    console.error('Failed to save default color sorting setting:', error);
+    console.error('Failed to save last used color sorting:', error);
   }
 }
