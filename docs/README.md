@@ -13,6 +13,7 @@ Extract pixel art from any area of the canvas to PNG format with precision and e
 - **🔄 Multi-Tile Support:** Extract large areas spanning multiple tiles seamlessly
 
 ---
+<img width="1916" height="955" alt="image" src="https://github.com/user-attachments/assets/6d0214ec-a398-439b-879e-9264b03c333c" />
 
 ## Installation
 
