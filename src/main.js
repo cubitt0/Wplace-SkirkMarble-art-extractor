@@ -12230,6 +12230,7 @@ function createSearchWindow() {
   }
   
   function addFavorite(location) {
+    console.log('Adding favorite with data:', location);
     const favorites = getFavorites();
     const exists = favorites.find(fav => fav.lat === location.lat && fav.lon === location.lon);
     if (!exists) {
@@ -12274,10 +12275,14 @@ function createSearchWindow() {
         const favoriteItem = document.createElement('div');
         favoriteItem.className = 'skirk-favorite-item';
         
+        // Defensive handling for missing properties
+        const displayName = favorite.primaryName || favorite.name || 'Unknown Location';
+        const displayAddress = favorite.secondaryInfo || favorite.fullAddress || '';
+        
         favoriteItem.innerHTML = `
           <div class="skirk-result-content">
-            <div class="skirk-result-name">${favorite.primaryName}</div>
-            <div class="skirk-result-address">${favorite.secondaryInfo}</div>
+            <div class="skirk-result-name">${displayName}</div>
+            <div class="skirk-result-address">${displayAddress}</div>
           </div>
           <span class="skirk-favorite-remove" title="Remove from favorites">×</span>
         `;
