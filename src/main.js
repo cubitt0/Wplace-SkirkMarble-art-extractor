@@ -25,7 +25,9 @@ import {
     getDragModeEnabled,
     getSmartDetectionEnabled,
     saveDefaultColorSorting,
-    saveDragModeEnabled
+    saveDragModeEnabled,
+    getTemplateSortMethod,
+    saveTemplateSortMethod
 } from './settingsManager.js';
 
 // Ensure debugLog is globally available to prevent ReferenceError - set it immediately
@@ -54,6 +56,18 @@ const COLOR_SORTING_OPTIONS = [
   { value: 'percentage-asc', text: 'Lowest Completion %' },
   { value: 'name-asc', text: 'Name A-Z' },
   { value: 'name-desc', text: 'Name Z-A' }
+];
+
+// Template sorting and filtering options
+const TEMPLATE_SORTING_OPTIONS = [
+  { value: 'name-asc', text: 'Name (A-Z)' },
+  { value: 'name-desc', text: 'Name (Z-A)' },
+  { value: 'pixels-desc', text: 'Most Pixels' },
+  { value: 'pixels-asc', text: 'Least Pixels' },
+  { value: 'status-enabled', text: 'Enabled First' },
+  { value: 'status-disabled', text: 'Disabled First' },
+  { value: 'id-asc', text: 'Oldest First' },
+  { value: 'id-desc', text: 'Newest First' }
 ];
 
 /** Injects code into the client
@@ -2609,6 +2623,57 @@ function showImportDialog(instance) {
   document.body.appendChild(overlay);
 }
 
+/** Sorts template keys based on the selected sorting method
+ * @param {Array<string>} templateKeys - Array of template keys
+ * @param {Object} templates - Templates object
+ * @param {TemplateManager} templateManager - Template manager instance
+ * @param {string} sortMethod - Sorting method
+ * @returns {Array<string>} Sorted template keys
+ * @since 0.91.2
+ */
+function sortTemplateKeys(templateKeys, templates, templateManager, sortMethod) {
+  // Create array of objects with key + data for sorting
+  const templateData = templateKeys.map(key => ({
+    key: key,
+    name: (templates[key].name || `Template ${key}`).toLowerCase(),
+    pixels: templates[key].pixelCount || 0,
+    enabled: templateManager.isTemplateEnabled(key),
+    sortId: parseInt(key.split(' ')[0], 10) || 0
+  }));
+  
+  // Sort based on method
+  switch (sortMethod) {
+    case 'name-asc':
+      templateData.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case 'name-desc':
+      templateData.sort((a, b) => b.name.localeCompare(a.name));
+      break;
+    case 'pixels-desc':
+      templateData.sort((a, b) => b.pixels - a.pixels);
+      break;
+    case 'pixels-asc':
+      templateData.sort((a, b) => a.pixels - b.pixels);
+      break;
+    case 'status-enabled':
+      templateData.sort((a, b) => (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0));
+      break;
+    case 'status-disabled':
+      templateData.sort((a, b) => (a.enabled ? 1 : 0) - (b.enabled ? 1 : 0));
+      break;
+    case 'id-desc':
+      templateData.sort((a, b) => b.sortId - a.sortId);
+      break;
+    case 'id-asc':
+    default:
+      templateData.sort((a, b) => a.sortId - b.sortId);
+      break;
+  }
+  
+  // Return sorted keys
+  return templateData.map(item => item.key);
+}
+
 /** Shows a comprehensive template management dialog
  * @param {Object} instance - The overlay instance
  * @since 1.0.0
@@ -2889,6 +2954,62 @@ function showTemplateManageDialog(instance) {
   header.appendChild(title);
   header.appendChild(closeBtn);
   
+  // Sort and filter controls bar
+  const controlsBar = document.createElement('div');
+  controlsBar.style.cssText = `
+    display: flex;
+    gap: 12px;
+    padding: 16px 24px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+  `;
+
+  // Sort dropdown
+  const sortLabel = document.createElement('label');
+  sortLabel.textContent = 'Sort by:';
+  sortLabel.style.cssText = `
+    font-size: 0.9em;
+    color: #94a3b8;
+    font-weight: 600;
+  `;
+
+  const sortSelect = document.createElement('select');
+  sortSelect.style.cssText = `
+    padding: 8px 12px;
+    background: #334155;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f1f5f9;
+    font-size: 0.9em;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s ease;
+  `;
+  sortSelect.onmouseover = () => {
+    sortSelect.style.borderColor = '#60a5fa';
+  };
+  sortSelect.onmouseout = () => {
+    sortSelect.style.borderColor = '#475569';
+  };
+
+  // Populate sort options
+  TEMPLATE_SORTING_OPTIONS.forEach(option => {
+    const optionEl = document.createElement('option');
+    optionEl.value = option.value;
+    optionEl.textContent = option.text;
+    sortSelect.appendChild(optionEl);
+  });
+
+  // Set current sort value from storage
+  const currentSort = getTemplateSortMethod();
+  sortSelect.value = currentSort;
+
+  controlsBar.appendChild(sortLabel);
+  controlsBar.appendChild(sortSelect);
+  
   // Content
   const content = document.createElement('div');
   content.style.cssText = `
@@ -2905,7 +3026,36 @@ function showTemplateManageDialog(instance) {
     gap: 12px;
   `;
   
-  templateKeys.forEach(templateKey => {
+  // Render template list function
+  const renderTemplateList = () => {
+    // Clear existing list
+    templateList.innerHTML = '';
+    
+    // Get current sort setting
+    const sortMethod = sortSelect.value;
+    
+    // Get and process template keys
+    let processedKeys = Object.keys(templates);
+    processedKeys = sortTemplateKeys(processedKeys, templates, templateManager, sortMethod);
+    
+    // Show empty state if no templates
+    if (processedKeys.length === 0) {
+      const emptyState = document.createElement('div');
+      emptyState.style.cssText = `
+        text-align: center;
+        padding: 48px 24px;
+        color: #64748b;
+      `;
+      emptyState.innerHTML = `
+        <div style="font-size: 3em; margin-bottom: 16px;">📭</div>
+        <div style="font-size: 1.1em; font-weight: 600;">No templates found</div>
+        <div style="font-size: 0.9em; margin-top: 8px;">Import a template to get started</div>
+      `;
+      templateList.appendChild(emptyState);
+      return;
+    }
+  
+  processedKeys.forEach(templateKey => {
     const template = templates[templateKey];
     const templateName = template.name || `Template ${templateKey}`;
     const templateCoords = template.coords || 'Unknown location';
@@ -3263,6 +3413,16 @@ function showTemplateManageDialog(instance) {
     templateItem.appendChild(buttonContainer);
     templateList.appendChild(templateItem);
   });
+  }; // End of renderTemplateList function
+  
+  // Sort change handler
+  sortSelect.addEventListener('change', () => {
+    saveTemplateSortMethod(sortSelect.value);
+    renderTemplateList();
+  });
+
+  // Initial render
+  renderTemplateList();
   
     content.appendChild(templateList);
   
@@ -3314,6 +3474,7 @@ function showTemplateManageDialog(instance) {
   
   // Assemble the interface
   container.appendChild(header);
+  container.appendChild(controlsBar);
   container.appendChild(content);
   container.appendChild(footer);
   overlay.appendChild(container);

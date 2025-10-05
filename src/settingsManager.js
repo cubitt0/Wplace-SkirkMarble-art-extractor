@@ -6,8 +6,63 @@
 import { debugLog } from './utils.js';
 
 /** Helper function to invalidate tile cache when settings change
- * @since 1.0.0
+ * @since 1.  } catch (error) {
+    console.error('Failed to save default color sorting setting:', error);
+  }
+}
+
+/** Gets the template list sorting method from storage
+ * @returns {string} Template sorting method (default: 'name-asc')
+ * @since 0.91.2
  */
+export function getTemplateSortMethod() {
+  try {
+    let sortMethod = null;
+
+    // Try TamperMonkey storage first
+    if (typeof GM_getValue !== 'undefined') {
+      const saved = GM_getValue('bmTemplateSortMethod', null);
+      if (saved !== null) sortMethod = JSON.parse(saved);
+    }
+
+    // Fallback to localStorage
+    if (sortMethod === null) {
+      const saved = localStorage.getItem('bmTemplateSortMethod');
+      if (saved !== null) sortMethod = JSON.parse(saved);
+    }
+
+    if (sortMethod !== null) {
+      debugLog('Template sort method loaded:', sortMethod);
+      return sortMethod;
+    }
+  } catch (error) {
+    console.warn('Failed to load template sort method:', error);
+  }
+
+  debugLog('Using default template sort method: name-asc');
+  return 'name-asc';
+}
+
+/** Saves the template list sorting method to storage
+ * @param {string} sortMethod - The sorting method to use
+ * @since 0.91.2
+ */
+export function saveTemplateSortMethod(sortMethod) {
+  try {
+    const sortMethodString = JSON.stringify(sortMethod);
+
+    if (typeof GM_setValue !== 'undefined') {
+      GM_setValue('bmTemplateSortMethod', sortMethodString);
+    }
+
+    localStorage.setItem('bmTemplateSortMethod', sortMethodString);
+    
+    debugLog('Template sort method saved:', sortMethod);
+  } catch (error) {
+    console.error('Failed to save template sort method:', error);
+  }
+}
+
 function invalidateCache() {
   // Dynamic import to avoid circular dependencies
   import('./tileManager.js').then(tileManager => {
