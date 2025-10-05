@@ -242,6 +242,26 @@ export function invalidateCacheForSettingsChange() {
   }
 }
 
+/** Invalidates all tile caches when template content changes
+ * Use this when template tiles are updated but template identity (sortID/name) stays the same
+ * @since 1.0.0
+ */
+export function invalidateCacheForTemplateUpdate() {
+  debugLog('[Tile Cache] Invalidating cache due to template content update');
+  
+  // Clear smart tile cache (performance cache)
+  if (smartTileCacheEnabled && smartTileCache.size > 0) {
+    clearSmartTileCache();
+  }
+  
+  // Clear frozen tile cache (pause mode cache)
+  if (frozenTileCache.size > 0) {
+    const previousSize = frozenTileCache.size;
+    frozenTileCache.clear();
+    debugLog(`[Tile Cache] Cleared frozen cache (${previousSize} tiles removed)`);
+  }
+}
+
 /** Initializes the tile refresh pause system
  * @param {Object} templateManager - The template manager instance
  * @since 1.0.0

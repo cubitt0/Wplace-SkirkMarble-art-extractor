@@ -178,7 +178,7 @@ export function startCoordinateDetection(type, callback, apiManager) {
   return cleanup;
 }
 
-export async function updatePreviewRectangle(templateManager) {
+export async function updatePreviewRectangle(templateManager, tileManager) {
   if (previewTemplate) {
     await templateManager.deleteTemplate(previewTemplate);
     previewTemplate = null;
@@ -302,4 +302,16 @@ export async function updatePreviewRectangle(templateManager) {
 
   await templateManager.importFromObject(templateJSON, { merge: true });
   previewTemplate = '10000 extractor-preview';
+  
+  // Force tile cache invalidation to show the updated preview immediately
+  // The cache key is based on template name+sortID which doesn't change when updating
+  // the same preview, so we need to explicitly clear the cache to force a redraw
+  if (tileManager && tileManager.invalidateCacheForTemplateUpdate) {
+    tileManager.invalidateCacheForTemplateUpdate();
+  }
+  
+  // Toggle templates to trigger complete re-render with cleared cache
+  templateManager.setTemplatesShouldBeDrawn(false);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  templateManager.setTemplatesShouldBeDrawn(true);
 }

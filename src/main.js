@@ -13,6 +13,7 @@ import {
     getCachedTileCount,
     getSmartCacheStats,
     initializeTileRefreshPause,
+    invalidateCacheForTemplateUpdate,
     isTileRefreshPaused,
     toggleSmartTileCache,
     toggleTileRefreshPause
@@ -9315,7 +9316,7 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
 
   closeButton.onclick = async () => {
     ArtExtractor.clearExtractorCoordinates();
-    await ArtExtractor.updatePreviewRectangle(templateManager);
+    await ArtExtractor.updatePreviewRectangle(templateManager, { invalidateCacheForTemplateUpdate });
     ArtExtractor.clearPreviewTemplate();
     artExtractorOverlay.remove();
   };
@@ -9479,7 +9480,7 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
         ArtExtractor.setToCoordinates(coords);
       }
       updateDimensionsDisplay();
-      await ArtExtractor.updatePreviewRectangle(templateManager);
+      await ArtExtractor.updatePreviewRectangle(templateManager, { invalidateCacheForTemplateUpdate });
     }
   };
 
@@ -9562,13 +9563,13 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       document.getElementById('bm-ae-height').textContent = dimensions.height.toLocaleString();
       document.getElementById('bm-ae-total').textContent = dimensions.pixels.toLocaleString();
       extractButton.disabled = false;
-      await ArtExtractor.updatePreviewRectangle(templateManager);
+      await ArtExtractor.updatePreviewRectangle(templateManager, { invalidateCacheForTemplateUpdate });
     } else {
       document.getElementById('bm-ae-width').textContent = '-';
       document.getElementById('bm-ae-height').textContent = '-';
       document.getElementById('bm-ae-total').textContent = '-';
       extractButton.disabled = true;
-      await ArtExtractor.updatePreviewRectangle(templateManager);
+      await ArtExtractor.updatePreviewRectangle(templateManager, { invalidateCacheForTemplateUpdate });
     }
   };
 
@@ -9585,7 +9586,7 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
       return;
     }
 
-    await ArtExtractor.updatePreviewRectangle(templateManager);
+    await ArtExtractor.updatePreviewRectangle(templateManager, { invalidateCacheForTemplateUpdate });
     
     const dims = ArtExtractor.calculateDimensions(coords.from, coords.to);
     extractButton.textContent = 'Extracting...';
