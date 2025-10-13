@@ -889,7 +889,7 @@ async function loadTemplates() {
         templateManager.updateTemplateWithColorFilter().catch(e => console.warn('Template color filter update failed:', e));
       }
     } catch (recoveryError) {
-      console.error('❌ Recovery failed:', recoveryError);
+      console.error('Recovery failed:', recoveryError);
     }
   }
   
@@ -901,10 +901,22 @@ async function loadTemplates() {
     if (templateCount === 0) {
       debugLog('ℹ️ No templates loaded - start by creating a new template');
     } else {
-      debugLog(`📚 Loaded ${templateCount} templates from ${storageSource}`);
+      debugLog(`Loaded ${templateCount} templates from ${storageSource}`);
     }
+    
+    // Update Color Menu after templates are loaded
+    setTimeout(() => {
+      if (typeof clearColorMenuCache === 'function') {
+        clearColorMenuCache();
+      }
+      if (typeof updateColorMenuDisplay === 'function') {
+        updateColorMenuDisplay(true, true);
+        debugLog('Color Menu initialized after template load');
+      }
+    }, 500);
+    
   } catch (importError) {
-    console.error('❌ Template import failed:', importError);
+    console.error('Template import failed:', importError);
     
     // Try to recover by creating fresh template structure
     try {
@@ -3258,6 +3270,16 @@ function showTemplateManageDialog(instance) {
       toggleBtn.style.color = newState ? 'white' : '#e2e8f0';
       
       instance.handleDisplayStatus(`${newState ? 'Enabled' : 'Disabled'} template "${templateName}"!`);
+      
+      // Update Color Menu after template enable/disable
+      setTimeout(() => {
+        if (typeof clearColorMenuCache === 'function') {
+          clearColorMenuCache();
+        }
+        if (typeof updateColorMenuDisplay === 'function') {
+          updateColorMenuDisplay(false, true);
+        }
+      }, 200);
     };
     
     // Fly button
@@ -3900,6 +3922,64 @@ function buildOverlayMain() {
           .addInput({'type': 'number', 'id': 'bm-input-py', 'placeholder': 'Px Y', 'min': 0, 'max': 2047, 'step': 1, 'required': true}).buildElement()
         .buildElement()
       .buildElement()
+      
+      // Color Menu
+      .addDiv({ 
+        id: 'bm-color-menu',
+        style: `
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          padding: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          margin-top: 8px;
+          display: ${JSON.parse(localStorage.getItem('bmShowColorMenu') ?? 'false') ? 'block' : 'none'};
+        `
+      })
+        .addDiv({
+          style: 'display: flex; gap: 6px; align-items: center; margin-bottom: 6px;'
+        })
+          .addDiv({
+            innerHTML: '<input type="text" id="bm-color-search" placeholder="🔍 Search colors..." style="flex: 1; padding: 4px 8px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; min-width: 0;" autocomplete="off">',
+          }).buildElement()
+          .addDiv({
+            innerHTML: '<select id="bm-color-sort" style="padding: 4px 6px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; min-width: 80px;"><option value="default" style="background: #2a2a2a; color: white;">Default</option><option value="most-missing" style="background: #2a2a2a; color: white;">Most Missing</option><option value="less-missing" style="background: #2a2a2a; color: white;">Less Missing</option><option value="most-painted" style="background: #2a2a2a; color: white;">Most Painted</option><option value="less-painted" style="background: #2a2a2a; color: white;">Less Painted</option><option value="enhanced" style="background: #2a2a2a; color: white;">Enhanced Only</option><option value="name-asc" style="background: #2a2a2a; color: white;">Name A-Z</option><option value="name-desc" style="background: #2a2a2a; color: white;">Name Z-A</option></select>',
+          }).buildElement()
+        .buildElement()
+        .addDiv({ 
+          id: 'bm-color-list',
+          style: `
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            max-height: 140px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255,255,255,0.3) transparent;
+          `
+        }, (instance) => {
+          // Initialize color menu after DOM is created and templates are loaded
+          setTimeout(() => {
+            updateColorMenuDisplay(true, true);
+          }, 2000);
+        }).buildElement()
+        .addDiv({
+          id: 'bm-color-menu-resize-handle',
+          style: `
+            height: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            cursor: ns-resize;
+            border-radius: 0 0 6px 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+          `,
+          innerHTML: '<div style="width: 30px; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px;"></div>'
+        }, (instance) => {
+          // Setup resize functionality
+          setTimeout(() => initColorMenuResize(), 100);
+        }).buildElement()
+      .buildElement()
       .addDiv({'id': 'bm-contain-buttons-template'})
         .addInputFile({'id': 'bm-input-file-template', 'textContent': 'Upload Template', 'accept': 'image/png, image/jpeg, image/webp, image/bmp, image/gif'})
         .addButton({'id': 'bm-button-create', innerHTML: icons.createIcon + 'Create'}, (instance, button) => {
@@ -3924,7 +4004,10 @@ function buildOverlayMain() {
             invalidateTemplateCache();
 
             // Update mini tracker after template creation
-            setTimeout(() => updateMiniTracker(), 500);
+            setTimeout(() => {
+              updateMiniTracker();
+              updateColorMenuDisplay(false, true); // Force update without resetting filters
+            }, 500);
 
             // console.log(`TCoords: ${apiManager.templateCoordsTilePixel}\nCoords: ${apiManager.coordsTilePixel}`);
             // apiManager.templateCoordsTilePixel = apiManager.coordsTilePixel; // Update template coords
@@ -6225,7 +6308,7 @@ function buildColorFilterOverlay() {
       debugLog('Color filter sorting saved:', selectedSort);
     });
 
-    // Enable/Disable all functionality
+    
     enableAllButton.onclick = async () => {
       colorPalette.forEach((colorInfo) => {
         currentTemplate.enableColor(colorInfo.rgb);
@@ -6238,7 +6321,7 @@ function buildColorFilterOverlay() {
       
       try {
         await refreshTemplateDisplay();
-        buildColorFilterOverlay(); // Rebuild to reflect changes
+        buildColorFilterOverlay(); 
       } catch (error) {
         console.error('Error enabling all colors:', error);
         overlayMain.handleDisplayError('Failed to enable all colors');
@@ -6257,7 +6340,7 @@ function buildColorFilterOverlay() {
       
       try {
         await refreshTemplateDisplay();
-        buildColorFilterOverlay(); // Rebuild to reflect changes
+        buildColorFilterOverlay(); 
       } catch (error) {
         console.error('Error disabling all colors:', error);
         overlayMain.handleDisplayError('Failed to disable all colors');
@@ -6385,6 +6468,7 @@ function buildColorFilterOverlay() {
         // Update mini tracker to reflect excluded colors
         updateMiniTracker();
         await refreshTemplateDisplay();
+        updateColorMenuDisplay(false); // Don't reset filters after color filter applied
         overlayMain.handleDisplayStatus('Color filter applied successfully!');
       } catch (error) {
         console.error('Error applying color filter:', error);
@@ -8199,6 +8283,11 @@ async function refreshTemplateDisplay() {
   
   // Update mini tracker after template refresh
   updateMiniTracker();
+  
+  // Update Color Menu after template refresh (same as mini tracker)
+  if (typeof updateColorMenuDisplay === 'function') {
+    setTimeout(() => updateColorMenuDisplay(false, true), 100);
+  }
 }
 
 /** Gets the saved crosshair color from storage
@@ -9050,6 +9139,37 @@ function startLeftBadgesAutoUpdate() {
   }
 }
 
+// Auto-update Color Menu (main template color list) every 5 seconds if visible
+let colorMenuAutoUpdateInterval = null;
+
+function startColorMenuAutoUpdate() {
+  // Clear existing interval if any
+  if (colorMenuAutoUpdateInterval) {
+    clearInterval(colorMenuAutoUpdateInterval);
+  }
+  
+  colorMenuAutoUpdateInterval = setInterval(() => {
+    const colorMenu = document.getElementById('bm-color-menu');
+    const colorList = document.getElementById('bm-color-list');
+    
+    if (skipNextColorMenuUpdate) {
+      debugLog('🎨 Color Menu auto-update skipped (manual change in progress)');
+      return;
+    }
+    
+    if (colorMenu && colorList && 
+        colorMenu.style.display !== 'none' && 
+        colorMenu.offsetParent !== null &&
+        templateManager?.templatesArray?.length > 0) {
+      
+      updateColorMenuNumbers();
+      debugLog('🎨 Color Menu numbers auto-updated');
+    }
+  }, 5000);
+  
+  debugLog('🎨 Color Menu auto-update started');
+}
+
 // Auto-update compact list every 5 seconds if visible
 let compactListAutoUpdateInterval = null;
 
@@ -9078,6 +9198,7 @@ function startCompactListAutoUpdate() {
 setTimeout(() => {
   startMiniTrackerAutoUpdate();
   startLeftBadgesAutoUpdate();
+  startColorMenuAutoUpdate();
   startCompactListAutoUpdate();
   
   // Pin functionality removed - Color Toggle is now just a simple toggle without persistence
@@ -9119,10 +9240,17 @@ function applyStoredOverlaySettings() {
     // Read settings from localStorage
     const showInfoHeader = JSON.parse(localStorage.getItem('bmShowInformationHeader') ?? 'true');
     const showTemplateHeader = JSON.parse(localStorage.getItem('bmShowTemplateHeader') ?? 'true');
+    const showColorMenu = JSON.parse(localStorage.getItem('bmShowColorMenu') ?? 'false'); // Default: disabled (Beta)
     
     // Apply header visibility (fallback - usually handled during creation)
     applyHeaderVisibility('bmShowInformationHeader', showInfoHeader);
     applyHeaderVisibility('bmShowTemplateHeader', showTemplateHeader);
+    
+    // Apply color menu visibility
+    const colorMenu = document.getElementById('bm-color-menu');
+    if (colorMenu) {
+      colorMenu.style.display = showColorMenu ? '' : 'none';
+    }
     
   } catch (error) {
     console.error('Failed to apply stored overlay settings:', error);
@@ -9807,6 +9935,666 @@ function buildArtExtractorOverlay(apiManager, templateManager) {
   // Make modal draggable
   makeDraggable(artExtractorOverlay, header);
 }
+
+// Cache for color menu data to prevent unnecessary updates
+let colorMenuCache = {
+  templateId: null,
+  colorsData: null,
+  enhancedColors: null,
+  disabledColors: null,
+  enabledTemplates: null
+};
+
+// Flag to prevent auto-update right after manual checkbox changes
+let skipNextColorMenuUpdate = false;
+
+/** Check if color data has changed since last update
+ * @returns {boolean} True if data has changed
+ * @since 1.0.0
+ */
+function hasColorDataChanged() {
+  const currentTemplate = templateManager?.templatesArray?.[0];
+  
+  if (!currentTemplate) {
+    // If no template now but had one before, data changed
+    const hasChanged = colorMenuCache.templateId !== null;
+    if (hasChanged) {
+      // Clear cache when template is removed
+      clearColorMenuCache();
+    }
+    return hasChanged;
+  }
+  
+  const currentTemplateId = `${currentTemplate.sortID}_${currentTemplate.authorID}`;
+  const currentEnhanced = Array.from(currentTemplate.enhancedColors || []).sort().join(',');
+  const currentDisabled = (currentTemplate.getDisabledColors?.() || []).sort().join(',');
+  
+  const enabledTemplates = [];
+  if (templateManager.templatesArray) {
+    for (const template of templateManager.templatesArray) {
+      const templateKey = `${template.sortID} ${template.authorID}`;
+      if (templateManager.isTemplateEnabled(templateKey)) {
+        enabledTemplates.push(templateKey);
+      }
+    }
+  }
+  const currentEnabledTemplates = enabledTemplates.sort().join('|');
+  
+  const hasChanged = 
+    colorMenuCache.templateId === null ||
+    colorMenuCache.templateId !== currentTemplateId ||
+    colorMenuCache.enhancedColors !== currentEnhanced ||
+    colorMenuCache.disabledColors !== currentDisabled ||
+    colorMenuCache.enabledTemplates !== currentEnabledTemplates; 
+  
+  return hasChanged;
+}
+
+/** Update color menu cache with current data
+ * @since 1.0.0
+ */
+function updateColorMenuCache() {
+  const currentTemplate = templateManager?.templatesArray?.[0];
+  
+  if (!currentTemplate) {
+    clearColorMenuCache();
+    return;
+  }
+  
+  const currentTemplateId = `${currentTemplate.sortID}_${currentTemplate.authorID}`;
+  const currentEnhanced = Array.from(currentTemplate.enhancedColors || []).sort().join(',');
+  const currentDisabled = (currentTemplate.getDisabledColors?.() || []).sort().join(',');
+  
+  const enabledTemplates = [];
+  if (templateManager.templatesArray) {
+    for (const template of templateManager.templatesArray) {
+      const templateKey = `${template.sortID} ${template.authorID}`;
+      if (templateManager.isTemplateEnabled(templateKey)) {
+        enabledTemplates.push(templateKey);
+      }
+    }
+  }
+  const currentEnabledTemplates = enabledTemplates.sort().join('|');
+  
+  colorMenuCache.templateId = currentTemplateId;
+  colorMenuCache.enhancedColors = currentEnhanced;
+  colorMenuCache.disabledColors = currentDisabled;
+  colorMenuCache.enabledTemplates = currentEnabledTemplates;
+}
+
+/** Clear color menu cache to force next update
+ * @since 1.0.0
+ */
+function clearColorMenuCache() {
+  colorMenuCache = {
+    templateId: null,
+    colorsData: null,
+    enhancedColors: null,
+    disabledColors: null,
+    enabledTemplates: null
+  };
+}
+
+/** Update ONLY the numbers in existing color menu items (lightweight, no DOM recreation)
+ * This prevents the "jumping" effect during auto-updates
+ * @since 1.0.0
+ */
+function updateColorMenuNumbers() {
+  const colorList = document.getElementById('bm-color-list');
+  if (!colorList) return;
+  
+  // Get fresh pixel statistics
+  const pixelStats = templateManager?.calculateRemainingPixelsByColor?.(0, true);
+  if (!pixelStats) return;
+  
+  // Update each existing item's numbers only
+  const items = colorList.querySelectorAll('.bm-color-item');
+  items.forEach(item => {
+    const colorName = item.getAttribute('data-name');
+    if (!colorName) return;
+    
+    // Find color in palette to get RGB key
+    import('./utils.js').then(utils => {
+      const colorInfo = utils.colorpalette.find(c => c.name.toLowerCase() === colorName);
+      if (!colorInfo) return;
+      
+      const colorKey = `${colorInfo.rgb[0]},${colorInfo.rgb[1]},${colorInfo.rgb[2]}`;
+      const stats = pixelStats[colorKey] || {};
+      
+      const painted = stats.painted || 0;
+      const remaining = stats.needsCrosshair || 0;
+      const totalPixels = painted + remaining;
+      const percentage = totalPixels > 0 ? Math.round((painted / totalPixels) * 100) : 0;
+      
+      // Update data attributes (for sorting to work correctly)
+      item.setAttribute('data-painted', painted);
+      item.setAttribute('data-total', totalPixels);
+      item.setAttribute('data-left', remaining);
+      item.setAttribute('data-percentage', percentage);
+      
+      // Update the text content (find the info div and update innerHTML)
+      const infoDiv = item.querySelector('div[style*="flex: 1"]');
+      if (infoDiv) {
+        infoDiv.innerHTML = `
+          <div style="color: white; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            ${colorInfo.name} <span style="color: #888;">${painted} / ${totalPixels}</span> <span style="color: #888;">(${percentage}%)</span> <span style="color: #ff8c42; font-weight: bold;">${remaining.toLocaleString()}</span>
+          </div>
+        `;
+      }
+    }).catch(() => {
+      // Silently fail if utils can't be loaded
+    });
+  });
+}
+
+/** Update the color menu display with current template colors
+ * @param {boolean} resetFilters - Whether to reset search and sort filters
+ * @param {boolean} forceUpdate - Force update even if data hasn't changed
+ * @since 1.0.0
+ */
+function updateColorMenuDisplay(resetFilters = true, forceUpdate = false) {
+  const colorList = document.getElementById('bm-color-list');
+  if (!colorList) return;
+  
+  // Skip update if data hasn't changed (unless forced)
+  const dataChanged = hasColorDataChanged();
+  if (!forceUpdate && !dataChanged) {
+    return;
+  }
+  
+  // Clear existing content
+  colorList.innerHTML = '';
+  
+  // Get current template (use global templateManager like color filter does)
+  const currentTemplate = templateManager?.templatesArray?.[0];
+  
+  if (!currentTemplate) {
+    colorList.innerHTML = '<p style="margin: 0; color: #888; text-align: center;">No template loaded</p>';
+    return;
+  }
+  
+  import('./utils.js').then(utils => {
+    const colorPalette = utils.colorpalette;
+    
+    debugLog('[Color Menu] Template Manager:', templateManager);
+    debugLog('[Color Menu] Current Template:', currentTemplate);
+    debugLog('[Color Menu] Color Palette Length:', colorPalette?.length);
+    
+    const pixelStats = templateManager.calculateRemainingPixelsByColor(0, true);
+    debugLog('[Color Menu] Pixel statistics received:', pixelStats);
+    debugLog('[Color Menu] Pixel stats keys:', pixelStats ? Object.keys(pixelStats) : 'null');
+    
+    const disabledColors = new Set(currentTemplate.getDisabledColors?.() || []);
+    const enhancedColors = currentTemplate.enhancedColors || new Set();
+    
+    debugLog('[Color Menu] Disabled colors:', disabledColors.size);
+    debugLog('[Color Menu] Enhanced colors:', enhancedColors.size);
+    
+    let colorsAdded = 0;
+    
+    colorPalette.forEach((colorInfo, index) => {
+      if (index === 0) return;
+      
+      const colorKey = `${colorInfo.rgb[0]},${colorInfo.rgb[1]},${colorInfo.rgb[2]}`;
+      const stats = pixelStats[colorKey] || {};
+      
+      debugLog(`[Color Menu] Processing color ${colorInfo.name} (${colorKey}):`, stats);
+      
+      const painted = stats.painted || 0;
+      const remaining = stats.needsCrosshair || 0;
+      const totalPixels = painted + remaining;
+      
+      if (totalPixels <= 0) {
+        debugLog(`[Color Menu] Skipping ${colorInfo.name} - totalPixels <= 0`);
+        return;
+      }
+      
+      colorsAdded++;
+      debugLog(`[Color Menu] Adding color ${colorInfo.name} to menu`);
+      
+      const [r, g, b] = colorInfo.rgb;
+      const isDisabled = disabledColors.has(colorKey);
+      const isEnhanced = enhancedColors.has(colorKey);
+      
+      const colorItem = document.createElement('div');
+      colorItem.className = 'bm-color-item';
+      
+      const left = remaining;
+      const total = totalPixels;
+      const percentage = total > 0 ? Math.round((painted / total) * 100) : 0;
+      
+      colorItem.setAttribute('data-name', colorInfo.name.toLowerCase());
+      colorItem.setAttribute('data-painted', painted);
+      colorItem.setAttribute('data-total', total);
+      colorItem.setAttribute('data-left', left);
+      colorItem.setAttribute('data-percentage', percentage);
+      colorItem.setAttribute('data-enhanced', isEnhanced ? '1' : '0');
+      colorItem.setAttribute('data-disabled', isDisabled ? '1' : '0');
+      
+      colorItem.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 11px;
+        line-height: 1.3;
+        min-height: 28px;
+        transition: all 0.2s;
+        ${isDisabled ? 'opacity: 0.5;' : ''}
+      `;
+      
+      // Enhanced checkbox
+      const enhancedCheckbox = document.createElement('input');
+      enhancedCheckbox.type = 'checkbox';
+      enhancedCheckbox.checked = isEnhanced;
+      enhancedCheckbox.style.cssText = `
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: gold;
+        flex-shrink: 0;
+      `;
+      
+      enhancedCheckbox.onchange = (e) => {
+        e.stopPropagation();
+        
+        if (enhancedCheckbox.checked) {
+          currentTemplate.enhancedColors.add(colorKey);
+        } else {
+          currentTemplate.enhancedColors.delete(colorKey);
+        }
+        
+        invalidateTemplateCache();
+        templateManager.updateTemplateWithColorFilter(0);
+        
+        colorItem.setAttribute('data-enhanced', enhancedCheckbox.checked ? '1' : '0');
+        
+        if (colorMenuCache.templateId) {
+          const newEnhanced = Array.from(currentTemplate.enhancedColors || []).sort().join(',');
+          colorMenuCache.enhancedColors = newEnhanced;
+        }
+        
+        skipNextColorMenuUpdate = true;
+        setTimeout(() => {
+          skipNextColorMenuUpdate = false;
+        }, 2000);
+      };
+      
+      // Color swatch (aumentado de 12px para 16px)
+      const swatch = document.createElement('div');
+      swatch.style.cssText = `
+        width: 16px;
+        height: 16px;
+        border-radius: 2px;
+        background: rgb(${r}, ${g}, ${b});
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        flex-shrink: 0;
+        cursor: pointer;
+      `;
+      
+      // Color info - número laranja movido para DEPOIS da porcentagem
+      const info = document.createElement('div');
+      info.style.cssText = 'flex: 1; overflow: hidden; cursor: pointer; min-width: 0;';
+      
+      info.innerHTML = `
+        <div style="color: white; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          ${colorInfo.name} <span style="color: #888;">${painted} / ${total}</span> <span style="color: #888;">(${percentage}%)</span> <span style="color: #ff8c42; font-weight: bold;">${left.toLocaleString()}</span>
+        </div>
+      `;
+      
+      // Click handler to toggle color enable/disable (on swatch and info)
+      const toggleColor = (e) => {
+        e.stopPropagation();
+        
+        // Check current disabled state
+        const currentlyDisabled = colorItem.getAttribute('data-disabled') === '1';
+        const newDisabled = !currentlyDisabled;
+        
+        if (currentlyDisabled) {
+          currentTemplate.enableColor?.([r, g, b]);
+        } else {
+          currentTemplate.disableColor?.([r, g, b]);
+        }
+        
+        colorItem.style.opacity = newDisabled ? '0.5' : '1';
+        colorItem.setAttribute('data-disabled', newDisabled ? '1' : '0');
+        
+        invalidateTemplateCache();
+        templateManager.updateTemplateWithColorFilter(0);
+        
+        if (colorMenuCache.templateId) {
+          const newDisabledColors = (currentTemplate.getDisabledColors?.() || []).sort().join(',');
+          colorMenuCache.disabledColors = newDisabledColors;
+        }
+        
+        skipNextColorMenuUpdate = true;
+        setTimeout(() => {
+          skipNextColorMenuUpdate = false;
+        }, 2000);
+      };
+      
+      swatch.onclick = toggleColor;
+      info.onclick = toggleColor;
+      
+      colorItem.appendChild(enhancedCheckbox);
+      colorItem.appendChild(swatch);
+      colorItem.appendChild(info);
+      colorList.appendChild(colorItem);
+    });
+    
+    debugLog(`[Color Menu] Processing complete. Colors added: ${colorsAdded}`);
+    debugLog(`[Color Menu] Color list children count: ${colorList.children.length}`);
+    
+    // If no colors were added, show message
+    if (colorList.children.length === 0) {
+      debugLog('[Color Menu] No colors in DOM - showing "no colors available" message');
+      colorList.innerHTML = '<p style="margin: 0; color: #888; text-align: center;">No template colors available</p>';
+      return;
+    }
+    
+    debugLog('[Color Menu] Setting up filters and updating cache');
+    
+    // Setup search and sort functionality
+    setupColorMenuFilters(resetFilters);
+    
+    // Update cache after successful display update
+    updateColorMenuCache();
+    
+  }).catch(error => {
+    console.error('[Color Menu] Failed to load utils:', error);
+    colorList.innerHTML = '<p style="margin: 0; color: #f88; text-align: center;">Error loading colors</p>';
+  });
+}
+
+/** Initialize resize functionality for color menu list
+ * @since 1.0.0
+ */
+function initColorMenuResize() {
+  const resizeHandle = document.getElementById('bm-color-menu-resize-handle');
+  const colorList = document.getElementById('bm-color-list');
+  
+  if (!resizeHandle || !colorList) return;
+  
+  let isResizing = false;
+  let startY = 0;
+  let startHeight = 0;
+  
+  // Load saved height from localStorage
+  const savedHeight = localStorage.getItem('bmColorMenuHeight');
+  if (savedHeight) {
+    colorList.style.maxHeight = savedHeight + 'px';
+  }
+  
+  const onMouseDown = (e) => {
+    isResizing = true;
+    startY = e.clientY;
+    startHeight = colorList.offsetHeight;
+    
+    // Visual feedback
+    resizeHandle.style.background = 'rgba(59, 130, 246, 0.3)';
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const onMouseMove = (e) => {
+    if (!isResizing) return;
+    
+    const delta = e.clientY - startY;
+    const newHeight = Math.max(60, Math.min(400, startHeight + delta));
+    
+    colorList.style.maxHeight = newHeight + 'px';
+    
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const onMouseUp = () => {
+    if (!isResizing) return;
+    
+    isResizing = false;
+    
+    // Reset visual feedback
+    resizeHandle.style.background = 'rgba(255, 255, 255, 0.05)';
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    
+    // Save height to localStorage
+    const currentHeight = colorList.offsetHeight;
+    localStorage.setItem('bmColorMenuHeight', currentHeight);
+  };
+  
+  // Touch events for mobile
+  const onTouchStart = (e) => {
+    isResizing = true;
+    startY = e.touches[0].clientY;
+    startHeight = colorList.offsetHeight;
+    
+    // Visual feedback
+    resizeHandle.style.background = 'rgba(59, 130, 246, 0.3)';
+    
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const onTouchMove = (e) => {
+    if (!isResizing) return;
+    
+    const delta = e.touches[0].clientY - startY;
+    const newHeight = Math.max(60, Math.min(400, startHeight + delta));
+    
+    colorList.style.maxHeight = newHeight + 'px';
+    
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const onTouchEnd = () => {
+    if (!isResizing) return;
+    
+    isResizing = false;
+    
+    // Reset visual feedback
+    resizeHandle.style.background = 'rgba(255, 255, 255, 0.05)';
+    
+    // Save height to localStorage
+    const currentHeight = colorList.offsetHeight;
+    localStorage.setItem('bmColorMenuHeight', currentHeight);
+  };
+  
+  // Hover effect
+  resizeHandle.addEventListener('mouseenter', () => {
+    if (!isResizing) {
+      resizeHandle.style.background = 'rgba(255, 255, 255, 0.1)';
+    }
+  });
+  
+  resizeHandle.addEventListener('mouseleave', () => {
+    if (!isResizing) {
+      resizeHandle.style.background = 'rgba(255, 255, 255, 0.05)';
+    }
+  });
+  
+  // Attach mouse event listeners
+  resizeHandle.addEventListener('mousedown', onMouseDown);
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+  
+  // Attach touch event listeners for mobile
+  resizeHandle.addEventListener('touchstart', onTouchStart, { passive: false });
+  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  document.addEventListener('touchend', onTouchEnd);
+  
+  debugLog('[Color Menu] Resize functionality initialized (mouse + touch)');
+}
+
+/** Setup search and sort functionality for color menu
+ * @param {boolean} resetFilters - Whether to reset filters
+ * @since 1.0.0
+ */
+function setupColorMenuFilters(resetFilters) {
+  const searchInput = document.getElementById('bm-color-search');
+  const sortSelect = document.getElementById('bm-color-sort');
+  const colorList = document.getElementById('bm-color-list');
+  
+  if (!searchInput || !sortSelect || !colorList) return;
+  
+  if (!searchInput._bmKeyboardListenersAdded) {
+    searchInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+    });
+    searchInput.addEventListener('keyup', (e) => {
+      e.stopPropagation();
+    });
+    searchInput.addEventListener('keypress', (e) => {
+      e.stopPropagation();
+    });
+    searchInput._bmKeyboardListenersAdded = true;
+  }
+  
+  // Clear existing listeners and data to prevent duplicates
+  const existingListener = searchInput._bmColorMenuListener;
+  const existingSortListener = sortSelect._bmColorMenuListener;
+  
+  if (existingListener) {
+    searchInput.removeEventListener('input', existingListener);
+    delete searchInput._bmColorMenuListener;
+  }
+  
+  if (existingSortListener) {
+    sortSelect.removeEventListener('change', existingSortListener);
+    delete sortSelect._bmColorMenuListener;
+  }
+  
+  // Reset filters if requested (but preserve current values if user is actively using them)
+  if (resetFilters) {
+    // Only reset if inputs are not currently focused or have user input
+    if (!searchInput.matches(':focus') && searchInput.value === '') {
+      searchInput.value = '';
+    }
+    if (!sortSelect.matches(':focus') && sortSelect.value === 'default') {
+      sortSelect.value = 'default';
+    }
+  }
+  
+  // Get current items (fresh list each time)
+  const getItems = () => Array.from(colorList.querySelectorAll('.bm-color-item'));
+  
+  // Store original order only once
+  const items = getItems();
+  items.forEach((item, index) => {
+    if (!item.hasAttribute('data-original-index')) {
+      item.setAttribute('data-original-index', index);
+    }
+  });
+  
+  // Filter and sort function
+  const filterAndSort = () => {
+    // Get fresh items list each time to avoid stale references
+    const currentItems = getItems();
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    const sortBy = sortSelect.value;
+    
+    // Clear previous no-results messages
+    const existingNoResults = colorList.querySelector('.bm-no-results');
+    if (existingNoResults) {
+      existingNoResults.remove();
+    }
+    
+    let filteredItems = currentItems.filter(item => {
+      const name = item.getAttribute('data-name') || '';
+      const enhanced = item.getAttribute('data-enhanced') === '1';
+      
+      // Search filter
+      const matchesSearch = !searchTerm || name.includes(searchTerm);
+      
+      // Enhanced filter
+      const matchesSort = sortBy !== 'enhanced' || enhanced;
+      
+      return matchesSearch && matchesSort;
+    });
+    
+    // Sort items
+    if (sortBy && sortBy !== 'default') {
+      filteredItems.sort((a, b) => {
+        switch (sortBy) {
+          case 'most-missing':
+            return parseInt(b.getAttribute('data-left') || '0') - parseInt(a.getAttribute('data-left') || '0');
+          case 'less-missing':
+            return parseInt(a.getAttribute('data-left') || '0') - parseInt(b.getAttribute('data-left') || '0');
+          case 'most-painted':
+            return parseInt(b.getAttribute('data-painted') || '0') - parseInt(a.getAttribute('data-painted') || '0');
+          case 'less-painted':
+            return parseInt(a.getAttribute('data-painted') || '0') - parseInt(b.getAttribute('data-painted') || '0');
+          case 'name-asc':
+            return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+          case 'name-desc':
+            return (b.getAttribute('data-name') || '').localeCompare(a.getAttribute('data-name') || '');
+          default:
+            return parseInt(a.getAttribute('data-original-index') || '0') - parseInt(b.getAttribute('data-original-index') || '0');
+        }
+      });
+    }
+    
+    // Hide all items first
+    currentItems.forEach(item => {
+      item.style.display = 'none';
+    });
+    
+    // Show and reorder filtered items
+    if (filteredItems.length > 0) {
+      filteredItems.forEach(item => {
+        item.style.display = 'flex';
+        colorList.appendChild(item); // Re-append to maintain order
+      });
+    } else {
+      // Show "no results" message
+      const noResults = document.createElement('p');
+      noResults.className = 'bm-no-results';
+      noResults.style.cssText = 'margin: 8px 0; color: #888; text-align: center; font-size: 10px;';
+      noResults.textContent = searchTerm ? 'No colors match your search' : 'No colors available';
+      colorList.appendChild(noResults);
+    }
+  };
+  
+  // Store listeners on elements to track them
+  searchInput._bmColorMenuListener = filterAndSort;
+  sortSelect._bmColorMenuListener = filterAndSort;
+  
+  // Add event listeners
+  searchInput.addEventListener('input', filterAndSort);
+  sortSelect.addEventListener('change', filterAndSort);
+  
+  // Apply current filters
+  setTimeout(filterAndSort, 50); // Small delay to ensure DOM is ready
+}
+
+// Initialize color menu when template is loaded
+window.addEventListener('message', (event) => {
+  if (event.data?.source === 'template-loaded' || event.data?.source === 'template-changed') {
+    clearColorMenuCache();
+    setTimeout(() => updateColorMenuDisplay(true, true), 500);
+  }
+});
+
+// Update color menu when overlay is shown and periodically
+const originalShowOverlay = window.showOverlay;
+if (originalShowOverlay) {
+  window.showOverlay = function(...args) {
+    const result = originalShowOverlay.apply(this, args);
+    setTimeout(() => updateColorMenuDisplay(false), 200); // Don't reset filters when showing overlay
+    return result;
+  };
+}
+
+window.updateColorMenuDisplay = updateColorMenuDisplay;
+window.clearColorMenuCache = clearColorMenuCache;
+window.updateColorMenuCache = updateColorMenuCache;
 
 
 /** Builds and displays the crosshair settings overlay
@@ -11526,6 +12314,7 @@ function buildCrosshairSettingsOverlay() {
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowDroplets', 'Droplets', 'bm-user-droplets'));
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowNextLevel', 'Next Level', 'bm-user-nextlevel'));
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowFullCharge', 'Full Charge', 'bm-user-fullcharge'));
+  checkboxContainer.appendChild(createVisibilityCheckbox('bmShowColorMenu', 'Color Menu (Beta Test)', 'bm-color-menu'));
   
 
   overlayVisibilitySection.appendChild(overlayVisibilityTitle);

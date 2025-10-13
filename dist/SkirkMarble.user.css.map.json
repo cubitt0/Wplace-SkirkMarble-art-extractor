@@ -78,5 +78,18 @@
   "bm-ae-coord-": "bm-2a",
   "bm-ae-height": "bm-2b",
   "bm-ae-width": "bm-2h",
-  "bm-ae-total": "bm-2i"
+  "bm-ae-total": "bm-2i",
+  "bm-coords-compact-icon": "bm-1t",
+  "bm-color-menu-section": "bm-1x",
+  "bm-color-menu-search": "bm-1A",
+  "bm-color-menu-sort": "bm-1I",
+  "bm-color-menu-list": "bm-1J",
+  "bm-color-menu-item": "bm-1K",
+  "bm-color-menu": "bm-23",
+  "bm-color-sort": "bm-24",
+  "bm-color-list": "bm-25",
+  "bm-color-item": "bm-27",
+  "bm-no-results": "bm-28",
+  "bm-23": "bm-2s",
+  "bm-color-menu-resize-handle": "bm-1l"
 }
