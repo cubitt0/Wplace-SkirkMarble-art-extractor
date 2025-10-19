@@ -91,5 +91,10 @@
   "bm-color-item": "bm-27",
   "bm-no-results": "bm-28",
   "bm-23": "bm-2s",
-  "bm-color-menu-resize-handle": "bm-1l"
+  "bm-color-menu-resize-handle": "bm-1l",
+  "bm-color-toggle-all": "bm-1P",
+  "bm-template-item": "bm-27",
+  "bm-close-btn": "bm-2n",
+  "bm-wrong-pixels-overlay": "bm-1G",
+  "bm-button-wrong-pixels": "bm-1L"
 }

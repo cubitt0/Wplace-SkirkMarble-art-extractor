@@ -84,10 +84,10 @@ function inject(callback) {
     script.remove();
 }
 
-function flyToLatLng(lat, lng) {
+function flyToLatLng(lat, lng, zoom = 16) {
   unsafeWindow.bmmap.flyTo({
       'center': [lng, lat],
-      'zoom': 16,
+      'zoom': zoom,
   })
 }
 
@@ -1390,8 +1390,24 @@ function observeOpacityButton() {
     mapButtonContainer = document.createElement('div');
     mapButtonContainer.id = 'bm-map-button-container';
     mapButtonContainer.className = 'fixed z-30';
-    mapButtonContainer.style.bottom = '230px'; // Fixed position above opacity button (approximate)
-    mapButtonContainer.style.left = '12px'; // Fixed position aligned with opacity button
+    mapButtonContainer.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      bottom: 230px;
+      left: 12px;
+    `;
+    
+    // Create the Wrong Pixels button (above Error Map button)
+    const wrongPixelsButton = document.createElement('button');
+    wrongPixelsButton.id = 'bm-button-wrong-pixels';
+    wrongPixelsButton.innerHTML = '❌';
+    wrongPixelsButton.className = 'btn btn-lg btn-square sm:btn-xl z-30 shadow-md text-base-content/80';
+    wrongPixelsButton.title = 'View Wrong Pixels Coordinates';
+    
+    wrongPixelsButton.onclick = function() {
+      showWrongPixelsDialog(overlayMain);
+    };
     
     // Create the Map button
     const mapButton = document.createElement('button');
@@ -1420,7 +1436,8 @@ function observeOpacityButton() {
       overlayMain.handleDisplayStatus(`Error Map ${isEnabled ? 'enabled' : 'disabled'}! ${isEnabled ? 'Green=correct, Red=wrong pixels' : 'Back to normal view'}`);
     };
     
-    // Add the button to our container
+    // Add the buttons to our container
+    mapButtonContainer.appendChild(wrongPixelsButton);
     mapButtonContainer.appendChild(mapButton);
     
     // Insert the Map button container directly into the body with fixed positioning
@@ -2686,6 +2703,263 @@ function sortTemplateKeys(templateKeys, templates, templateManager, sortMethod) 
   return templateData.map(item => item.key);
 }
 
+/** Shows wrong pixels coordinates dialog with fly-to functionality
+ * @param {Object} instance - The overlay instance
+ * @since 1.0.0
+ */
+function showWrongPixelsDialog(instance) {
+  const wrongPixelsList = [];
+  
+  if (!templateManager || !templateManager.tileProgress || templateManager.tileProgress.size === 0) {
+    instance.handleDisplayError('No tile data available. Please load a template first!');
+    return;
+  }
+  
+  for (const [tileCoords, tileData] of templateManager.tileProgress.entries()) {
+    if (tileData.wrong > 0 && tileData.colorBreakdown) {
+      const [tileX, tileY] = tileCoords.split(',').map(Number);
+      
+      for (const [colorKey, colorStats] of Object.entries(tileData.colorBreakdown)) {
+        if (colorStats.wrong > 0 && colorStats.firstWrongPixel) {
+          wrongPixelsList.push({
+            tileX,
+            tileY,
+            colorKey,
+            wrongCount: colorStats.wrong,
+            tileCoords: `${tileX}, ${tileY}`,
+            pixelX: colorStats.firstWrongPixel[0],
+            pixelY: colorStats.firstWrongPixel[1]
+          });
+        }
+      }
+    }
+  }
+  
+  if (wrongPixelsList.length === 0) {
+    instance.handleDisplayStatus('🎉 No wrong pixels found! All pixels match the template!');
+    return;
+  }
+  
+  wrongPixelsList.sort((a, b) => b.wrongCount - a.wrongCount);
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'bm-wrong-pixels-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `;
+  
+  const container = document.createElement('div');
+  container.style.cssText = `
+    background: #1e293b;
+    color: #f1f5f9;
+    border-radius: 20px;
+    border: 1px solid #334155;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
+    max-width: 390px;
+    width: 90%;
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  `;
+  
+  // Header
+  const header = document.createElement('div');
+  header.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px 12px 16px;
+    border-bottom: 1px solid #334155;
+    background: linear-gradient(135deg, #1e293b, #293548);
+  `;
+  
+  const title = document.createElement('h3');
+  title.textContent = `Wrong Pixels (${wrongPixelsList.length} locations)`;
+  title.style.cssText = `
+    margin: 0;
+    font-size: 1.2em;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f87171, #ef4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  `;
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.className = 'bm-close-btn';
+  closeBtn.style.cssText = `
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+  `;
+  closeBtn.onclick = () => document.body.removeChild(overlay);
+  
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  
+  const content = document.createElement('div');
+  content.style.cssText = `
+    padding: 14px 16px;
+    overflow-y: auto;
+    flex: 1;
+  `;
+  
+  const pixelsList = document.createElement('div');
+  pixelsList.style.cssText = `
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  `;
+  
+  const loadingDiv = document.createElement('div');
+  loadingDiv.style.cssText = `
+    text-align: center;
+    padding: 40px;
+    color: #94a3b8;
+    font-size: 14px;
+  `;
+  loadingDiv.textContent = 'Loading wrong pixels...';
+  pixelsList.appendChild(loadingDiv);
+  
+  content.appendChild(pixelsList);
+  container.appendChild(header);
+  container.appendChild(content);
+  overlay.appendChild(container);
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+  
+  document.body.appendChild(overlay);
+  
+  requestAnimationFrame(() => {
+    pixelsList.innerHTML = '';
+    
+    wrongPixelsList.forEach((wrongPixel, index) => {
+      const pixelItem = document.createElement('div');
+      pixelItem.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 10px;
+        background: #334155;
+        border-radius: 6px;
+        border: 1px solid #475569;
+        gap: 8px;
+      `;
+      
+      // Color swatch
+      const [r, g, b] = wrongPixel.colorKey.split(',').map(Number);
+      const swatch = document.createElement('div');
+      swatch.style.cssText = `
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        background: rgb(${r}, ${g}, ${b});
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        flex-shrink: 0;
+      `;
+      
+      // Info section
+      const info = document.createElement('div');
+      info.style.cssText = 'flex: 1; min-width: 0;';
+      info.innerHTML = `
+        <div style="font-weight: 600; color: #f1f5f9; margin-bottom: -5px; font-size: 0.9em;">
+          Tile ${wrongPixel.tileX}, ${wrongPixel.tileY}
+        </div>
+        <div style="font-size: 0.8em; color: #94a3b8;">
+          ${wrongPixel.wrongCount} wrong pixel${wrongPixel.wrongCount > 1 ? 's' : ''} • RGB(${r}, ${g}, ${b})
+        </div>
+      `;
+      
+      // Fly button
+      const flyBtn = document.createElement('button');
+      flyBtn.innerHTML = icons.pinIcon;
+      flyBtn.title = 'Fly to this tile';
+      flyBtn.style.cssText = `
+        padding: 6px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        min-width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        color: white;
+        flex-shrink: 0;
+      `;
+      
+      flyBtn.onclick = () => {
+        const pX = wrongPixel.pixelX;
+        const pY = wrongPixel.pixelY;
+        const coordinates = [wrongPixel.tileX, wrongPixel.tileY, pX, pY];
+        
+        const coordTxInput = document.querySelector('#bm-input-tx');
+        const coordTyInput = document.querySelector('#bm-input-ty');
+        const coordPxInput = document.querySelector('#bm-input-px');
+        const coordPyInput = document.querySelector('#bm-input-py');
+        
+        if (coordTxInput) coordTxInput.value = wrongPixel.tileX;
+        if (coordTyInput) coordTyInput.value = wrongPixel.tileY;
+        if (coordPxInput) coordPxInput.value = pX;
+        if (coordPyInput) coordPyInput.value = pY;
+        
+        const latLng = canvasPosToLatLng(coordinates);
+        
+        if (latLng) {
+          const navigationMethod = Settings.getNavigationMethod();
+          const zoom = 19.5;
+          
+          if (navigationMethod === 'openurl') {
+            const url = `https://wplace.live/?lat=${latLng.lat}&lng=${latLng.lng}&zoom=${zoom}`;
+            window.location.href = url;
+          } else {
+            flyToLatLng(latLng.lat, latLng.lng, zoom);
+          }
+          
+          document.body.removeChild(overlay);
+          instance.handleDisplayStatus(`🧭 ${navigationMethod === 'openurl' ? 'Navigating' : 'Flying'} to wrong pixel at Tile ${wrongPixel.tileX},${wrongPixel.tileY} (${pX}, ${pY})!`);
+        } else {
+          instance.handleDisplayError('❌ Unable to convert coordinates!');
+        }
+      };
+      
+      pixelItem.appendChild(swatch);
+      pixelItem.appendChild(info);
+      pixelItem.appendChild(flyBtn);
+      pixelsList.appendChild(pixelItem);
+    });
+  });
+}
+
 /** Shows a comprehensive template management dialog
  * @param {Object} instance - The overlay instance
  * @since 1.0.0
@@ -2734,6 +3008,30 @@ function showTemplateManageDialog(instance) {
     const mobileStyles = document.createElement('style');
     mobileStyles.id = 'bm-manage-mobile-styles';
     mobileStyles.textContent = `
+      /* Template manager styles with hardware acceleration */
+      #bm-template-manage-overlay .bm-close-btn {
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      #bm-template-manage-overlay .bm-close-btn:hover {
+        background: rgba(239, 68, 68, 0.1) !important;
+        color: #ef4444 !important;
+      }
+      #bm-template-manage-overlay .bm-template-item {
+        will-change: transform, background;
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+      #bm-template-manage-overlay .bm-template-item:hover {
+        background: #3f4b5f !important;
+        transform: translateY(-1px) translateZ(0);
+      }
+      #bm-template-manage-overlay button {
+        will-change: transform, background;
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+      #bm-template-manage-overlay button:hover {
+        transform: translateY(-1px) translateZ(0);
+      }
+      
       /* Template manager mobile styles */
       @media screen and (max-width: 500px) {
         /* Make ONLY template items stack vertically - not header */
@@ -2938,6 +3236,7 @@ function showTemplateManageDialog(instance) {
   
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '×';
+  closeBtn.className = 'bm-close-btn';
   closeBtn.style.cssText = `
     background: none;
     border: none;
@@ -2951,16 +3250,7 @@ function showTemplateManageDialog(instance) {
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    transition: all 0.2s ease;
   `;
-  closeBtn.onmouseover = () => {
-    closeBtn.style.background = 'rgba(239, 68, 68, 0.1)';
-    closeBtn.style.color = '#ef4444';
-  };
-  closeBtn.onmouseout = () => {
-    closeBtn.style.background = 'none';
-    closeBtn.style.color = '#94a3b8';
-  };
   closeBtn.onclick = () => document.body.removeChild(overlay);
   
   header.appendChild(title);
@@ -3075,6 +3365,7 @@ function showTemplateManageDialog(instance) {
     const isEnabled = templateManager.isTemplateEnabled(templateKey);
     
     const templateItem = document.createElement('div');
+    templateItem.className = 'bm-template-item';
     templateItem.style.cssText = `
       display: flex;
       justify-content: space-between;
@@ -3083,16 +3374,7 @@ function showTemplateManageDialog(instance) {
       background: #334155;
       border-radius: 12px;
       border: 1px solid #475569;
-      transition: all 0.2s ease;
     `;
-    templateItem.onmouseover = () => {
-      templateItem.style.background = '#3f4b5f';
-      templateItem.style.transform = 'translateY(-1px)';
-    };
-    templateItem.onmouseout = () => {
-      templateItem.style.background = '#334155';
-      templateItem.style.transform = '';
-    };
     
     const templateInfo = document.createElement('div');
     templateInfo.style.cssText = `
@@ -3213,7 +3495,6 @@ function showTemplateManageDialog(instance) {
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      transition: all 0.2s ease;
       min-width: 36px;
       height: 36px;
       display: flex;
@@ -3222,15 +3503,6 @@ function showTemplateManageDialog(instance) {
       background: linear-gradient(135deg, #22c55e, #16a34a);
       color: white;
     `;
-    exportBtn.onmouseover = () => {
-      exportBtn.style.background = 'linear-gradient(135deg, #16a34a, #15803d)';
-      exportBtn.style.transform = 'translateY(-1px)';
-    };
-    
-    exportBtn.onmouseout = () => {
-      exportBtn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
-      exportBtn.style.transform = '';
-    };
 
     exportBtn.onclick = () => {
       templateManager.downloadTemplateJSON(templateKey);
@@ -3247,7 +3519,6 @@ function showTemplateManageDialog(instance) {
       cursor: pointer;
       font-size: 0.85em;
       font-weight: 600;
-      transition: all 0.2s ease;
       min-width: 80px;
       ${isEnabled 
         ? 'background: linear-gradient(135deg, #10b981, #059669); color: white;'
@@ -3291,7 +3562,6 @@ function showTemplateManageDialog(instance) {
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      transition: all 0.2s ease;
       min-width: 36px;
       height: 36px;
       display: flex;
@@ -3300,16 +3570,6 @@ function showTemplateManageDialog(instance) {
       background: linear-gradient(135deg, #3b82f6, #2563eb);
       color: white;
     `;
-    
-    flyBtn.onmouseover = () => {
-      flyBtn.style.background = 'linear-gradient(135deg, #2563eb, #1d4ed8)';
-      flyBtn.style.transform = 'translateY(-1px)';
-    };
-    
-    flyBtn.onmouseout = () => {
-      flyBtn.style.background = 'linear-gradient(135deg, #3b82f6, #2563eb)';
-      flyBtn.style.transform = '';
-    };
     
     flyBtn.onclick = () => {
       if (templateCoords && templateCoords !== 'Unknown location') {
@@ -3367,7 +3627,6 @@ function showTemplateManageDialog(instance) {
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      transition: all 0.2s ease;
       min-width: 36px;
       height: 36px;
       display: flex;
@@ -3376,16 +3635,6 @@ function showTemplateManageDialog(instance) {
       background: linear-gradient(135deg, #ef4444, #dc2626);
       color: white;
     `;
-    
-    deleteBtn.onmouseover = () => {
-      deleteBtn.style.background = 'linear-gradient(135deg, #dc2626, #b91c1c)';
-      deleteBtn.style.transform = 'translateY(-1px)';
-    };
-    
-    deleteBtn.onmouseout = () => {
-      deleteBtn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-      deleteBtn.style.transform = '';
-    };
     
     deleteBtn.onclick = (e) => {
       e.stopPropagation();
@@ -3446,7 +3695,7 @@ function showTemplateManageDialog(instance) {
   // Initial render
   renderTemplateList();
   
-    content.appendChild(templateList);
+  content.appendChild(templateList);
   
   // Footer with actions that keep dialog open
   const footer = document.createElement('div');
@@ -3939,10 +4188,13 @@ function buildOverlayMain() {
           style: 'display: flex; gap: 6px; align-items: center; margin-bottom: 6px;'
         })
           .addDiv({
-            innerHTML: '<input type="text" id="bm-color-search" placeholder="🔍 Search colors..." style="flex: 1; padding: 4px 8px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; min-width: 0;" autocomplete="off">',
+            innerHTML: '<input type="text" id="bm-color-search" placeholder="🔍 Search colors..." style="flex: 1; padding: 4px 8px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; min-width: 0; max-width: 120px;" autocomplete="off">',
           }).buildElement()
           .addDiv({
-            innerHTML: '<select id="bm-color-sort" style="padding: 4px 6px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; min-width: 80px;"><option value="default" style="background: #2a2a2a; color: white;">Default</option><option value="most-missing" style="background: #2a2a2a; color: white;">Most Missing</option><option value="less-missing" style="background: #2a2a2a; color: white;">Less Missing</option><option value="most-painted" style="background: #2a2a2a; color: white;">Most Painted</option><option value="less-painted" style="background: #2a2a2a; color: white;">Less Painted</option><option value="enhanced" style="background: #2a2a2a; color: white;">Enhanced Only</option><option value="name-asc" style="background: #2a2a2a; color: white;">Name A-Z</option><option value="name-desc" style="background: #2a2a2a; color: white;">Name Z-A</option></select>',
+            innerHTML: '<select id="bm-color-sort" style="padding: 4px 6px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; flex: 1; min-width: 80px;"><option value="default" style="background: #2a2a2a; color: white;">Default</option><option value="premium" style="background: #2a2a2a; color: white;">Premium 💧</option><option value="most-wrong" style="background: #2a2a2a; color: white;">Most Wrong</option><option value="most-missing" style="background: #2a2a2a; color: white;">Most Missing</option><option value="less-missing" style="background: #2a2a2a; color: white;">Less Missing</option><option value="most-painted" style="background: #2a2a2a; color: white;">Most Painted</option><option value="less-painted" style="background: #2a2a2a; color: white;">Less Painted</option><option value="enhanced" style="background: #2a2a2a; color: white;">Enhanced Only</option><option value="name-asc" style="background: #2a2a2a; color: white;">Name A-Z</option><option value="name-desc" style="background: #2a2a2a; color: white;">Name Z-A</option></select>',
+          }).buildElement()
+          .addDiv({
+            innerHTML: '<button id="bm-color-toggle-all" title="Enable/Disable All Colors" style="padding: 4px 8px; font-size: 11px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: rgba(255,255,255,0.1); color: white; cursor: pointer; white-space: nowrap;">⚡</button>',
           }).buildElement()
         .buildElement()
         .addDiv({ 
@@ -10075,10 +10327,12 @@ function updateColorMenuNumbers() {
       // Update the text content (find the info div and update innerHTML)
       const infoDiv = item.querySelector('div[style*="flex: 1"]');
       if (infoDiv) {
+        const isPremium = colorInfo.free === false;
         infoDiv.innerHTML = `
-          <div style="color: white; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <div style="color: white; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: ${isPremium ? '18px' : '0'};">
             ${colorInfo.name} <span style="color: #888;">${painted} / ${totalPixels}</span> <span style="color: #888;">(${percentage}%)</span> <span style="color: #ff8c42; font-weight: bold;">${remaining.toLocaleString()}</span>
           </div>
+          ${isPremium ? '<span style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-size: 10px; opacity: 0.7;">💧</span>' : ''}
         `;
       }
     }).catch(() => {
@@ -10132,6 +10386,7 @@ function updateColorMenuDisplay(resetFilters = true, forceUpdate = false) {
     
     let colorsAdded = 0;
     
+    let colorIndex = 0;
     colorPalette.forEach((colorInfo, index) => {
       if (index === 0) return;
       
@@ -10158,10 +10413,12 @@ function updateColorMenuDisplay(resetFilters = true, forceUpdate = false) {
       
       const colorItem = document.createElement('div');
       colorItem.className = 'bm-color-item';
+      colorItem.setAttribute('data-original-index', colorIndex++);
       
       const left = remaining;
       const total = totalPixels;
       const percentage = total > 0 ? Math.round((painted / total) * 100) : 0;
+      const isPremium = colorInfo.free === false;
       
       colorItem.setAttribute('data-name', colorInfo.name.toLowerCase());
       colorItem.setAttribute('data-painted', painted);
@@ -10170,6 +10427,7 @@ function updateColorMenuDisplay(resetFilters = true, forceUpdate = false) {
       colorItem.setAttribute('data-percentage', percentage);
       colorItem.setAttribute('data-enhanced', isEnhanced ? '1' : '0');
       colorItem.setAttribute('data-disabled', isDisabled ? '1' : '0');
+      colorItem.setAttribute('data-premium', isPremium ? '1' : '0');
       
       colorItem.style.cssText = `
         display: flex;
@@ -10237,12 +10495,13 @@ function updateColorMenuDisplay(resetFilters = true, forceUpdate = false) {
       
       // Color info - número laranja movido para DEPOIS da porcentagem
       const info = document.createElement('div');
-      info.style.cssText = 'flex: 1; overflow: hidden; cursor: pointer; min-width: 0;';
+      info.style.cssText = 'flex: 1; overflow: hidden; cursor: pointer; min-width: 0; position: relative;';
       
       info.innerHTML = `
-        <div style="color: white; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        <div style="color: white; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: ${isPremium ? '18px' : '0'};">
           ${colorInfo.name} <span style="color: #888;">${painted} / ${total}</span> <span style="color: #888;">(${percentage}%)</span> <span style="color: #ff8c42; font-weight: bold;">${left.toLocaleString()}</span>
         </div>
+        ${isPremium ? '<span style="position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-size: 10px; opacity: 0.7;">💧</span>' : ''}
       `;
       
       // Click handler to toggle color enable/disable (on swatch and info)
@@ -10471,6 +10730,54 @@ function setupColorMenuFilters(resetFilters) {
     delete sortSelect._bmColorMenuListener;
   }
   
+  // Setup toggle all button
+  const toggleAllBtn = document.getElementById('bm-color-toggle-all');
+  if (toggleAllBtn && !toggleAllBtn._bmToggleListenerAdded) {
+    toggleAllBtn.addEventListener('click', () => {
+      const currentTemplate = templateManager?.templatesArray?.[0];
+      if (!currentTemplate) return;
+      
+      const items = Array.from(colorList.querySelectorAll('.bm-color-item'));
+      if (items.length === 0) return;
+      
+      const allDisabled = items.every(item => item.getAttribute('data-disabled') === '1');
+      
+      items.forEach(item => {
+        const swatch = item.querySelector('div[style*="background: rgb"]');
+        if (!swatch) return;
+        
+        const rgbMatch = swatch.style.background.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (!rgbMatch) return;
+        
+        const rgb = [parseInt(rgbMatch[1]), parseInt(rgbMatch[2]), parseInt(rgbMatch[3])];
+        
+        if (allDisabled) {
+          currentTemplate.enableColor?.(rgb);
+          item.style.opacity = '1';
+          item.setAttribute('data-disabled', '0');
+        } else {
+          currentTemplate.disableColor?.(rgb);
+          item.style.opacity = '0.5';
+          item.setAttribute('data-disabled', '1');
+        }
+      });
+      
+      invalidateTemplateCache();
+      templateManager.updateTemplateWithColorFilter(0);
+      
+      if (colorMenuCache.templateId) {
+        const newDisabledColors = (currentTemplate.getDisabledColors?.() || []).sort().join(',');
+        colorMenuCache.disabledColors = newDisabledColors;
+      }
+      
+      skipNextColorMenuUpdate = true;
+      setTimeout(() => {
+        skipNextColorMenuUpdate = false;
+      }, 2000);
+    });
+    toggleAllBtn._bmToggleListenerAdded = true;
+  }
+  
   // Reset filters if requested (but preserve current values if user is actively using them)
   if (resetFilters) {
     // Only reset if inputs are not currently focused or have user input
@@ -10520,26 +10827,40 @@ function setupColorMenuFilters(resetFilters) {
     });
     
     // Sort items
-    if (sortBy && sortBy !== 'default') {
-      filteredItems.sort((a, b) => {
-        switch (sortBy) {
-          case 'most-missing':
-            return parseInt(b.getAttribute('data-left') || '0') - parseInt(a.getAttribute('data-left') || '0');
-          case 'less-missing':
-            return parseInt(a.getAttribute('data-left') || '0') - parseInt(b.getAttribute('data-left') || '0');
-          case 'most-painted':
-            return parseInt(b.getAttribute('data-painted') || '0') - parseInt(a.getAttribute('data-painted') || '0');
-          case 'less-painted':
-            return parseInt(a.getAttribute('data-painted') || '0') - parseInt(b.getAttribute('data-painted') || '0');
-          case 'name-asc':
-            return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
-          case 'name-desc':
-            return (b.getAttribute('data-name') || '').localeCompare(a.getAttribute('data-name') || '');
-          default:
-            return parseInt(a.getAttribute('data-original-index') || '0') - parseInt(b.getAttribute('data-original-index') || '0');
+    filteredItems.sort((a, b) => {
+      if (!sortBy || sortBy === 'default') {
+        return parseInt(a.getAttribute('data-original-index') || '0') - parseInt(b.getAttribute('data-original-index') || '0');
+      }
+      
+      switch (sortBy) {
+        case 'premium': {
+          const aIsPremium = a.getAttribute('data-premium') === '1';
+          const bIsPremium = b.getAttribute('data-premium') === '1';
+          if (aIsPremium && !bIsPremium) return -1;
+          if (!aIsPremium && bIsPremium) return 1;
+          return parseInt(b.getAttribute('data-left') || '0') - parseInt(a.getAttribute('data-left') || '0');
         }
-      });
-    }
+        case 'most-wrong': {
+          const aWrong = parseInt(a.getAttribute('data-total') || '0') - parseInt(a.getAttribute('data-painted') || '0');
+          const bWrong = parseInt(b.getAttribute('data-total') || '0') - parseInt(b.getAttribute('data-painted') || '0');
+          return bWrong - aWrong;
+        }
+        case 'most-missing':
+          return parseInt(b.getAttribute('data-left') || '0') - parseInt(a.getAttribute('data-left') || '0');
+        case 'less-missing':
+          return parseInt(a.getAttribute('data-left') || '0') - parseInt(b.getAttribute('data-left') || '0');
+        case 'most-painted':
+          return parseInt(b.getAttribute('data-painted') || '0') - parseInt(a.getAttribute('data-painted') || '0');
+        case 'less-painted':
+          return parseInt(a.getAttribute('data-painted') || '0') - parseInt(b.getAttribute('data-painted') || '0');
+        case 'name-asc':
+          return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+        case 'name-desc':
+          return (b.getAttribute('data-name') || '').localeCompare(a.getAttribute('data-name') || '');
+        default:
+          return parseInt(a.getAttribute('data-original-index') || '0') - parseInt(b.getAttribute('data-original-index') || '0');
+      }
+    });
     
     // Hide all items first
     currentItems.forEach(item => {
@@ -10550,7 +10871,7 @@ function setupColorMenuFilters(resetFilters) {
     if (filteredItems.length > 0) {
       filteredItems.forEach(item => {
         item.style.display = 'flex';
-        colorList.appendChild(item); // Re-append to maintain order
+        colorList.appendChild(item);
       });
     } else {
       // Show "no results" message

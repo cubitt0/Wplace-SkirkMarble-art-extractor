@@ -1084,15 +1084,13 @@ export default class TemplateManager {
               // Ignore #deface explicitly
               if (tr === 222 && tg === 250 && tb === 206) { continue; }
               
-              // Track required count for this specific template color
               const colorKey = `${tr},${tg},${tb}`;
               if (!colorBreakdown[colorKey]) {
-                colorBreakdown[colorKey] = { painted: 0, required: 0, wrong: 0 };
+                colorBreakdown[colorKey] = { painted: 0, required: 0, wrong: 0, firstWrongPixel: null };
               }
               colorBreakdown[colorKey].required++;
               requiredCount++;
 
-              // Check if pixel is correctly painted on canvas
               const tileIdx = (gy * drawSize + gx) * 4;
               const pr = tilePixels[tileIdx];
               const pg = tilePixels[tileIdx + 1];
@@ -1100,13 +1098,17 @@ export default class TemplateManager {
               const pa = tilePixels[tileIdx + 3];
 
               if (pa < 64) {
-                // Unpainted -> neither painted nor wrong
               } else if (pr === tr && pg === tg && pb === tb) {
                 paintedCount++;
                 colorBreakdown[colorKey].painted++;
               } else {
                 wrongCount++;
                 colorBreakdown[colorKey].wrong++;
+                if (!colorBreakdown[colorKey].firstWrongPixel) {
+                  const pixelX = Math.floor(gx / this.drawMult);
+                  const pixelY = Math.floor(gy / this.drawMult);
+                  colorBreakdown[colorKey].firstWrongPixel = [pixelX, pixelY];
+                }
               }
             }
           }
