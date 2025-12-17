@@ -105,15 +105,32 @@ inject(() => {
   // Observer to wait for the map to be ready and set window.bmmap
   const observer = new MutationObserver(mutations => {
     try {
-      let map = document.querySelector("div.absolute.bottom-3.right-3.z-30").childNodes[0].__click[3].v
-      if(typeof map.version == "string"){
-        window.bmmap = map;
-        observer.disconnect();
-      }
+      const original = Map.prototype.values;
+      Map.prototype.values = function () {
+        const temp = original.call(this);
+        const entries = Array.from(temp);
+        
+        entries.forEach((x, index) => {
+            if (x && x['maps']) {
+                Array.from(x['maps']).forEach((y, mapIndex) => {
+                    if(y){
+                      var flyTo = y.flyTo || y['flyTo'];
+                      if (flyTo) {
+                          window.bmmap = y;
+                          Map.prototype.values = original;
+                          observer.disconnect();
+                      }
+                    }
+                });
+            }
+        });
+        
+        return temp;
+      };
     }
     catch (e){
-
     }
+    observer.disconnect();
   });
 
   observer.observe(document.body, {
