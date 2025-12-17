@@ -107,11 +107,17 @@ inject(() => {
     try {
       const original = Map.prototype.values;
       Map.prototype.values = function () {
+        if (Array.from(this).some(arr => arr.some(x => x && x.color))) {
+          return original.call(this);
+        }
         const temp = original.call(this);
         const entries = Array.from(temp);
         
+        if(entries && entries.filter(x=>x['maps'] instanceof Set).length == 0) {
+          return temp;
+        }
         entries.forEach((x, index) => {
-            if (x && x['maps']) {
+            if (x && x['maps'] instanceof Set) {
                 Array.from(x['maps']).forEach((y, mapIndex) => {
                     if(y){
                       var flyTo = y.flyTo || y['flyTo'];
@@ -123,6 +129,9 @@ inject(() => {
                     }
                 });
             }
+            else {
+              return temp;
+            }
         });
         
         return temp;
@@ -130,7 +139,6 @@ inject(() => {
     }
     catch (e){
     }
-    observer.disconnect();
   });
 
   observer.observe(document.body, {
