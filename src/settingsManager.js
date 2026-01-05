@@ -708,3 +708,58 @@ export function saveDefaultColorSorting(sortingMethod) {
     console.error('Failed to save last used color sorting:', error);
   }
 }
+
+/** Gets the Shift+Hover color picker enabled setting from storage
+ * @returns {boolean} Whether Shift+Hover color picker is enabled
+ * @since 1.0.0
+ */
+export function getSpaceHoverColorPickerEnabled() {
+  try {
+    let enabled = null;
+    
+    // Try TamperMonkey storage first
+    if (typeof GM_getValue !== 'undefined') {
+      const saved = GM_getValue('bmShiftHoverColorPicker', null);
+      if (saved !== null) enabled = JSON.parse(saved);
+    }
+    
+    // Fallback to localStorage
+    if (enabled === null) {
+      const saved = localStorage.getItem('bmShiftHoverColorPicker');
+      if (saved !== null) enabled = JSON.parse(saved);
+    }
+    
+    if (enabled !== null) {
+      debugLog('Shift+Hover color picker setting loaded:', enabled);
+      return enabled;
+    }
+  } catch (error) {
+    console.warn('Failed to load Shift+Hover color picker setting:', error);
+  }
+  
+  // Default to disabled
+  debugLog('Using default Shift+Hover color picker setting: false');
+  return false;
+}
+
+/** Saves the Shift+Hover color picker enabled setting to storage
+ * @param {boolean} enabled - Whether Shift+Hover color picker should be enabled
+ * @since 1.0.0
+ */
+export function saveSpaceHoverColorPickerEnabled(enabled) {
+  try {
+    const enabledString = JSON.stringify(enabled);
+    
+    // Save to TamperMonkey storage
+    if (typeof GM_setValue !== 'undefined') {
+      GM_setValue('bmShiftHoverColorPicker', enabledString);
+    }
+    
+    // Also save to localStorage as backup
+    localStorage.setItem('bmShiftHoverColorPicker', enabledString);
+    
+    debugLog('Shift+Hover color picker setting saved:', enabled);
+  } catch (error) {
+    console.error('Failed to save Shift+Hover color picker setting:', error);
+  }
+}

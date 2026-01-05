@@ -603,7 +603,7 @@ export default class TemplateManager {
     const canvas = document.createElement('canvas');
     canvas.width = drawSize;
     canvas.height = drawSize;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
 
     context.imageSmoothingEnabled = false; // Nearest neighbor
 
@@ -667,7 +667,7 @@ export default class TemplateManager {
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = template.bitmap.width;
         tempCanvas.height = template.bitmap.height;
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         tempCtx.imageSmoothingEnabled = false;
         
         // Draw original template to temp canvas
@@ -1917,7 +1917,7 @@ export default class TemplateManager {
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = tileBitmap.width;
     tempCanvas.height = tileBitmap.height;
-    const tempCtx = tempCanvas.getContext('2d');
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
     tempCtx.imageSmoothingEnabled = false;
     tempCtx.drawImage(tileBitmap, 0, 0);
     const templateImageData = tempCtx.getImageData(0, 0, tileBitmap.width, tileBitmap.height);
@@ -2569,7 +2569,7 @@ export default class TemplateManager {
          const tempCanvas = document.createElement('canvas');
          tempCanvas.width = tileBitmap.width;
          tempCanvas.height = tileBitmap.height;
-         const tempCtx = tempCanvas.getContext('2d');
+         const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
          tempCtx.imageSmoothingEnabled = false;
          tempCtx.drawImage(tileBitmap, 0, 0);
          const templateImageData = tempCtx.getImageData(0, 0, tileBitmap.width, tileBitmap.height);
@@ -2700,7 +2700,7 @@ export default class TemplateManager {
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = templateBitmap.width;
       tempCanvas.height = templateBitmap.height;
-      const tempCtx = tempCanvas.getContext('2d');
+      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
       tempCtx.imageSmoothingEnabled = false;
       tempCtx.drawImage(templateBitmap, 0, 0);
       const templateImageData = tempCtx.getImageData(0, 0, templateBitmap.width, templateBitmap.height);
@@ -3008,7 +3008,7 @@ export default class TemplateManager {
             const canvas = document.createElement('canvas');
             canvas.width = templateBitmap.width;
             canvas.height = templateBitmap.height;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(templateBitmap, 0, 0);
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -3160,5 +3160,84 @@ export default class TemplateManager {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  /** Gets the template pixel color at specific tile/pixel coordinates
+   * @param {number} tileX - Tile X coordinate
+   * @param {number} tileY - Tile Y coordinate
+   * @param {number} pixelX - Pixel X coordinate within tile (0-999)
+   * @param {number} pixelY - Pixel Y coordinate within tile (0-999)
+   * @returns {Object|null} Color object {r, g, b} or null if no template pixel at location
+   * @since 1.0.0
+   */
+  getTemplatePixelColorAt(tileX, tileY, pixelX, pixelY) {
+    try {
+      // Format tile coordinates for lookup (zero-padded)
+      const tileCoords = `${String(tileX).padStart(4, '0')},${String(tileY).padStart(4, '0')}`;
+      
+      // Search through enabled templates for a pixel at this location
+      for (const template of this.templatesArray) {
+        const templateKey = `${template.sortID} ${template.authorID}`;
+        
+        // Skip disabled templates
+        if (!this.isTemplateEnabled(templateKey)) {
+          continue;
+        }
+        
+        // Find matching tiles for this tile coordinate
+        const matchingTiles = Object.keys(template.chunked || {}).filter(tile =>
+          tile.startsWith(tileCoords)
+        );
+        
+        for (const tileKey of matchingTiles) {
+          const tileBitmap = template.chunked[tileKey];
+          const coords = tileKey.split(',');
+          const tilePixelX = parseInt(coords[2], 10); // Pixel offset X within tile chunk
+          const tilePixelY = parseInt(coords[3], 10); // Pixel offset Y within tile chunk
+          
+          // Calculate local pixel position within this tile chunk
+          // Account for drawMult (3x) scaling - each logical pixel is 3x3
+          const localX = (pixelX - tilePixelX) * this.drawMult + 1; // +1 to get center pixel
+          const localY = (pixelY - tilePixelY) * this.drawMult + 1; // +1 to get center pixel
+          
+          // Check if pixel is within this tile chunk's bounds
+          if (localX < 0 || localX >= tileBitmap.width || localY < 0 || localY >= tileBitmap.height) {
+            continue;
+          }
+          
+          // Get pixel color from bitmap
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = tileBitmap.width;
+          tempCanvas.height = tileBitmap.height;
+          const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+          tempCtx.imageSmoothingEnabled = false;
+          tempCtx.drawImage(tileBitmap, 0, 0);
+          const imageData = tempCtx.getImageData(localX, localY, 1, 1);
+          const data = imageData.data;
+          
+          const r = data[0];
+          const g = data[1];
+          const b = data[2];
+          const a = data[3];
+          
+          // Skip transparent pixels (alpha < 64) and #deface (transparent marker)
+          if (a < 64) {
+            continue;
+          }
+          if (r === 222 && g === 250 && b === 206) {
+            continue; // #deface is the transparent marker color
+          }
+          
+          // Found a valid template pixel color
+          debugLog(`[Color Picker] Found template color at (${tileX},${tileY},${pixelX},${pixelY}): rgb(${r},${g},${b})`);
+          return { r, g, b };
+        }
+      }
+      
+      return null; // No template pixel at this location
+    } catch (error) {
+      console.warn('[Color Picker] Error getting template pixel color:', error);
+      return null;
+    }
   }
 }

@@ -27,7 +27,9 @@ import {
     saveDefaultColorSorting,
     saveDragModeEnabled,
     getTemplateSortMethod,
-    saveTemplateSortMethod
+    saveTemplateSortMethod,
+    getSpaceHoverColorPickerEnabled,
+    saveSpaceHoverColorPickerEnabled
 } from './settingsManager.js';
 
 // Ensure debugLog is globally available to prevent ReferenceError - set it immediately
@@ -275,6 +277,95 @@ inject(() => {
 
     return response; // Returns the original response
   };
+
+  // Handle coordinate conversion requests from TamperMonkey context
+  window.addEventListener('message', (event) => {
+    if (event.data?.source === 'blue-marble-coord-request') {
+      const requestId = event.data['requestId'];
+      const canvasX = event.data['canvasX'];
+      const canvasY = event.data['canvasY'];
+      
+      if (!window.bmmap || !window.bmmap.transform) {
+        window.postMessage({
+          'source': 'blue-marble-coord-response',
+          'requestId': requestId,
+          'error': 'Map not ready'
+        }, '*');
+        return;
+      }
+      
+      try {
+        const t = window.bmmap.transform;
+        
+        // Use the transform's getters directly (they work even when internal props are minified)
+        const center = t.center;  // getter returns LngLat object
+        const zoom = t.zoom;      // getter returns zoom level
+        const width = t.width || 1920;
+        const height = t.height || 959;
+        
+        // Use bracket notation with strings to avoid minification issues
+        const centerLng = center['lng'];
+        const centerLat = center['lat'];
+        
+        if (centerLng === undefined || centerLat === undefined || zoom === undefined) {
+          window.postMessage({
+            'source': 'blue-marble-coord-response',
+            'requestId': requestId,
+            'error': 'Missing center/zoom'
+          }, '*');
+          return;
+        }
+        
+        // Calculate the scale factor (pixels per degree at this zoom)
+        const worldSize = 512 * Math.pow(2, zoom);
+        
+        // Canvas center
+        const canvasCenterX = width / 2;
+        const canvasCenterY = height / 2;
+        
+        // Pixel offset from center
+        const offsetX = canvasX - canvasCenterX;
+        const offsetY = canvasY - canvasCenterY;
+        
+        // Convert pixel offset to lng/lat offset (Mercator projection)
+        const lngPerPixel = 360 / worldSize;
+        const lng = centerLng + offsetX * lngPerPixel;
+        
+        // Latitude is more complex due to Mercator projection
+        const centerLatRad = centerLat * Math.PI / 180;
+        const mercY = Math.log(Math.tan(Math.PI / 4 + centerLatRad / 2));
+        const mercYPerPixel = 2 * Math.PI / worldSize;
+        const newMercY = mercY - offsetY * mercYPerPixel;
+        const lat = (2 * Math.atan(Math.exp(newMercY)) - Math.PI / 2) * 180 / Math.PI;
+        
+        // Convert lng/lat to tile/pixel coordinates
+        const mapSize = 2048000;
+        const x = (lng + 180) / 360;
+        const latRad = lat * Math.PI / 180;
+        const y = (Math.PI - Math.log(Math.tan(Math.PI / 4 + latRad / 2))) / (2 * Math.PI);
+        
+        const actualX = Math.floor(x * mapSize);
+        const actualY = Math.floor(y * mapSize);
+        
+        const tileX = Math.floor(actualX / 1000);
+        const tileY = Math.floor(actualY / 1000);
+        const pixelX = actualX % 1000;
+        const pixelY = actualY % 1000;
+        
+        window.postMessage({
+          'source': 'blue-marble-coord-response',
+          'requestId': requestId,
+          'coords': { 'tileX': tileX, 'tileY': tileY, 'pixelX': pixelX, 'pixelY': pixelY }
+        }, '*');
+      } catch (err) {
+        window.postMessage({
+          'source': 'blue-marble-coord-response',
+          'requestId': requestId,
+          'error': err.message
+        }, '*');
+      }
+    }
+  });
 });
 
 // Imports the CSS file from dist folder on github
@@ -1332,6 +1423,9 @@ observeOpacityButton(); // Observes and adds the Map button above opacity button
 
 // Initialize keyboard shortcuts
 initializeKeyboardShortcuts();
+
+// Initialize Space+Hover color picker
+initializeSpaceHoverColorPicker();
 
 // Add styles for full charge element
 if (!document.getElementById('bm-fullcharge-styles')) {
@@ -8413,6 +8507,222 @@ function invalidateTemplateCache() {
   });
 }
 
+// ====== SPACE+HOVER COLOR PICKER ======
+
+/** State for Space+Hover color picker */
+let isSpaceHoverActive = false;
+let lastPickedColorKey = null;
+
+/** Reverse lookup map: RGB string -> color ID */
+const RGB_TO_COLOR_ID = {};
+Object.entries(COLOR_PALETTE_MAP).forEach(([colorId, rgb]) => {
+  if (rgb.length >= 3) {
+    const key = `${rgb[0]},${rgb[1]},${rgb[2]}`;
+    RGB_TO_COLOR_ID[key] = colorId;
+  }
+});
+
+/** Initialize Space+Hover color picker functionality
+ * 
+ * HOW TO USE:
+ * 1. Enable "Space+Hover Color Picker" in settings
+ * 2. Hold Space key while hovering over the canvas
+ * 3. When hovering over a template pixel, the color is automatically selected in the palette
+ * 4. Release Space to stop auto-selecting colors
+ * 
+ * @since 1.0.0
+ */
+function initializeSpaceHoverColorPicker() {
+  debugLog('🎨 [Space+Hover] Initializing color picker...');
+  
+  // Track Space key state - use capture phase to run before other handlers
+  document.addEventListener('keydown', (event) => {
+    if (event.code === 'Space' && !event.repeat && getSpaceHoverColorPickerEnabled()) {
+      isSpaceHoverActive = true;
+      document.body.style.cursor = 'crosshair';
+      debugLog('🎨 [Space+Hover] Color picker mode activated');
+      // Prevent default space behavior (scrolling) and stop propagation
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, { capture: true });
+  
+  document.addEventListener('keyup', (event) => {
+    if (event.code === 'Space') {
+      isSpaceHoverActive = false;
+      document.body.style.cursor = '';
+      lastPickedColorKey = null;
+    }
+  }, { capture: true });
+  
+  // Handle mousemove for color picking
+  document.addEventListener('mousemove', handleSpaceHoverColorPick, { passive: true });
+  
+  debugLog('🎨 [Space+Hover] Color picker initialized successfully');
+}
+
+// Pending coordinate conversion requests
+const pendingCoordRequests = new Map();
+
+// Listen for coordinate conversion responses from page context
+window.addEventListener('message', (event) => {
+  if (event.data?.source === 'blue-marble-coord-response') {
+    const requestId = event.data['requestId'];
+    const coords = event.data['coords'];
+    const error = event.data['error'];
+    
+    // Handle async requests
+    const pending = pendingCoordRequests.get(requestId);
+    if (pending) {
+      pending.resolve({ coords, error });
+      pendingCoordRequests.delete(requestId);
+      return;
+    }
+    
+    // Handle hover requests - do the color picking here
+    if (requestId && requestId.startsWith('hover-') && coords && !error) {
+      // Only process if shift is still held and feature is enabled
+      if (!isSpaceHoverActive || !getSpaceHoverColorPickerEnabled()) {
+        return;
+      }
+      
+      const tileX = coords['tileX'];
+      const tileY = coords['tileY'];
+      const pixelX = coords['pixelX'];
+      const pixelY = coords['pixelY'];
+      
+      // Get the template pixel color at this position
+      const color = templateManager.getTemplatePixelColorAt(tileX, tileY, pixelX, pixelY);
+      if (!color) {
+        return;
+      }
+      
+      // Convert RGB to color ID
+      const rgbKey = `${color.r},${color.g},${color.b}`;
+      const colorId = RGB_TO_COLOR_ID[rgbKey];
+      
+      if (!colorId) {
+        return;
+      }
+      
+      // Click the corresponding color button
+      const colorButton = document.querySelector(`button#${CSS.escape(colorId)}`);
+      if (colorButton && !colorButton.classList.contains('selected')) {
+        colorButton.click();
+      }
+    }
+  }
+});
+
+/** Convert screen coordinates to tile/pixel coordinates (async via postMessage)
+ * @param {number} screenX - Screen X coordinate (clientX)
+ * @param {number} screenY - Screen Y coordinate (clientY)
+ * @returns {Promise<Object|null>} {tileX, tileY, pixelX, pixelY} or null if conversion fails
+ */
+async function screenToTilePixelAsync(screenX, screenY) {
+  try {
+    // Get map canvas element and its position
+    const canvas = document.querySelector('div#map canvas.maplibregl-canvas');
+    if (!canvas) {
+      console.log('🎨 [Space+Hover] No canvas found');
+      return null;
+    }
+    
+    const rect = canvas.getBoundingClientRect();
+    
+    // Convert screen coords to canvas-relative coords
+    const canvasX = screenX - rect.left;
+    const canvasY = screenY - rect.top;
+    
+    // Generate unique request ID
+    const requestId = crypto.randomUUID();
+    
+    // Create promise that will be resolved when we get the response
+    const promise = new Promise((resolve) => {
+      pendingCoordRequests.set(requestId, { resolve });
+      
+      // Timeout after 100ms
+      setTimeout(() => {
+        if (pendingCoordRequests.has(requestId)) {
+          pendingCoordRequests.delete(requestId);
+          resolve({ error: 'Timeout' });
+        }
+      }, 100);
+    });
+    
+    // Send request to page context
+    window.postMessage({
+      source: 'blue-marble-coord-request',
+      requestId,
+      canvasX,
+      canvasY
+    }, '*');
+    
+    const result = await promise;
+    
+    if (result.error) {
+      console.log('🎨 [Space+Hover] Coord conversion error:', result.error);
+      return null;
+    }
+    
+    return result.coords;
+  } catch (error) {
+    console.log('🎨 [Space+Hover] Error converting coords:', error);
+    return null;
+  }
+}
+
+/** Convert screen coordinates to tile/pixel coordinates (sync cached version for mousemove)
+ * Uses last known map state for immediate response
+ */
+let lastKnownMapState = null;
+
+function screenToTilePixel(screenX, screenY) {
+  try {
+    // Get map canvas element and its position
+    const canvas = document.querySelector('div#map canvas.maplibregl-canvas');
+    if (!canvas) {
+      return null;
+    }
+    
+    const rect = canvas.getBoundingClientRect();
+    
+    // Convert screen coords to canvas-relative coords
+    const canvasX = screenX - rect.left;
+    const canvasY = screenY - rect.top;
+    
+    // We need to use postMessage but can't do async in mousemove efficiently
+    // Instead, post the request and let the response handler update state
+    const requestId = 'hover-' + Date.now();
+    
+    window.postMessage({
+      'source': 'blue-marble-coord-request',
+      'requestId': requestId,
+      'canvasX': canvasX,
+      'canvasY': canvasY
+    }, '*');
+    
+    // Return null - the actual color picking will happen in the response handler
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/** Handle mousemove for Space+Hover color picking */
+function handleSpaceHoverColorPick(event) {
+  // Early exit if not in space+hover mode
+  if (!isSpaceHoverActive) {
+    return;
+  }
+  if (!getSpaceHoverColorPickerEnabled()) {
+    return;
+  }
+  
+  // Send coordinate conversion request - color picking happens in response handler
+  screenToTilePixel(event.clientX, event.clientY);
+}
+
 // ====== ERROR MAP MODE (LURK INTEGRATION) ======
 
 /** Gets the error map enabled state from storage */
@@ -12764,6 +13074,90 @@ function buildCrosshairSettingsOverlay() {
   leftOnColorSection.appendChild(leftOnColorToggle);
   contentContainer.appendChild(mobileSection);
   contentContainer.appendChild(leftOnColorSection);
+
+  // Space+Hover Color Picker Section
+  const spaceHoverSection = document.createElement('div');
+  spaceHoverSection.style.cssText = `
+    background: linear-gradient(135deg, var(--slate-800), var(--slate-750));
+    border: 1px solid var(--slate-700);
+    border-radius: ${sectionBorderRadius};
+    padding: ${sectionPadding};
+    margin-bottom: ${sectionMargin};
+    position: relative;
+    z-index: 1;
+  `;
+
+  const spaceHoverLabel = document.createElement('div');
+  spaceHoverLabel.textContent = 'Space+Hover Color Picker:';
+  spaceHoverLabel.style.cssText = `
+    font-size: 1em; 
+    margin-bottom: 12px; 
+    color: var(--slate-200);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  `;
+
+  const spaceHoverDescription = document.createElement('div');
+  spaceHoverDescription.textContent = 'Hold Space and hover over template pixels to auto-select colors from the palette. Updates instantly as you move the mouse.';
+  spaceHoverDescription.style.cssText = `
+    font-size: 0.9em; 
+    color: var(--slate-300); 
+    margin-bottom: 16px; 
+    line-height: 1.4;
+    letter-spacing: -0.005em;
+  `;
+
+  let tempSpaceHoverEnabled = getSpaceHoverColorPickerEnabled();
+
+  const spaceHoverToggle = document.createElement('div');
+  spaceHoverToggle.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `;
+
+  const spaceHoverCheckbox = document.createElement('input');
+  spaceHoverCheckbox.type = 'checkbox';
+  spaceHoverCheckbox.checked = tempSpaceHoverEnabled;
+  spaceHoverCheckbox.style.cssText = `
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  `;
+
+  const spaceHoverToggleText = document.createElement('span');
+  spaceHoverToggleText.textContent = tempSpaceHoverEnabled ? 'Enabled' : 'Disabled';
+  spaceHoverToggleText.style.cssText = `
+    color: ${tempSpaceHoverEnabled ? '#4caf50' : '#f44336'};
+    font-weight: bold;
+    cursor: pointer;
+  `;
+
+  const updateSpaceHoverState = () => {
+    tempSpaceHoverEnabled = spaceHoverCheckbox.checked;
+    spaceHoverToggleText.textContent = tempSpaceHoverEnabled ? 'Enabled' : 'Disabled';
+    spaceHoverToggleText.style.color = tempSpaceHoverEnabled ? '#4caf50' : '#f44336';
+    // Save immediately when toggled
+    saveSpaceHoverColorPickerEnabled(tempSpaceHoverEnabled);
+    debugLog(`Space+Hover color picker ${tempSpaceHoverEnabled ? 'enabled' : 'disabled'}`);
+  };
+
+  spaceHoverCheckbox.addEventListener('change', updateSpaceHoverState);
+  spaceHoverToggleText.onclick = (e) => {
+    e.stopPropagation();
+    spaceHoverCheckbox.checked = !spaceHoverCheckbox.checked;
+    updateSpaceHoverState();
+  };
+
+  spaceHoverToggle.style.cursor = 'default';
+  spaceHoverToggle.appendChild(spaceHoverCheckbox);
+  spaceHoverToggle.appendChild(spaceHoverToggleText);
+
+  spaceHoverSection.appendChild(spaceHoverLabel);
+  spaceHoverSection.appendChild(spaceHoverDescription);
+  spaceHoverSection.appendChild(spaceHoverToggle);
+  contentContainer.appendChild(spaceHoverSection);
+
   contentContainer.appendChild(collapseSection);
 
   // Navigation method section

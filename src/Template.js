@@ -97,7 +97,7 @@ export default class Template {
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = imageWidth;
     tempCanvas.height = imageHeight;
-    const tempCtx = tempCanvas.getContext('2d');
+    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
     tempCtx.imageSmoothingEnabled = false;
     
     if (bitmap.canvas) {
@@ -492,7 +492,7 @@ export default class Template {
         const canvas = document.createElement('canvas');
         canvas.width = originalBitmap.width;
         canvas.height = originalBitmap.height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.imageSmoothingEnabled = false;
         
         // Draw original bitmap
