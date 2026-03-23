@@ -376,6 +376,8 @@ function initOverlay(imageSrc) {
     box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
     user-select: none;
     z-index: 1;
+    max-width: none !important;
+    max-height: none !important;
   `;
 
   placerContainer.appendChild(placerImage);
