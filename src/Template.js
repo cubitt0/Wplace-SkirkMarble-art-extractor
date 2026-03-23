@@ -1,4 +1,4 @@
-import { uint8ToBase64, debugLog } from "./utils.js";
+import { uint8ToBase64, debugLog, colorpaletteForBlueMarble } from "./utils.js";
 
 /** An instance of a template.
  * Handles all mathematics, manipulation, and analysis regarding a single template.
@@ -16,6 +16,7 @@ export default class Template {
    * @param {File} [params.file=null] - The template file (pre-processed File or processed bitmap)
    * @param {Array<number>} [params.coords=null] - The coordinates of the top left corner as (tileX, tileY, pixelX, pixelY)
    * @param {Object} [params.chunked=null] - The affected chunks of the template, and their template for each chunk
+   * @param {Object} [params.chunked32={}] - The affected chunks as Uint32Array for fast pixel comparison
    * @param {number} [params.tileSize=1000] - The size of a tile in pixels (assumes square tiles)
    * @param {number} [params.pixelCount=0] - Total number of pixels in the template (calculated automatically during processing)
    * @since 0.65.2
@@ -28,6 +29,7 @@ export default class Template {
     file = null,
     coords = null,
     chunked = null,
+    chunked32 = {},
     tileSize = 1000,
   } = {}) {
     this.displayName = displayName;
@@ -37,6 +39,7 @@ export default class Template {
     this.file = file;
     this.coords = coords;
     this.chunked = chunked;
+    this.chunked32 = chunked32;
     this.tileSize = tileSize;
     this.pixelCount = 0; // Total pixel count in template
     this.disabledColors = new Set(); // Set of disabled color RGB values as strings "r,g,b"
@@ -48,38 +51,44 @@ export default class Template {
   }
 
   /** Creates chunks of the template for each tile.
-   * 
+   * Uses OffscreenCanvas and compositing mask for high-performance tile processing.
+   * Stores Uint32Array per tile for fast pixel comparison.
+   * @param {number} [tileSize] - The size of a tile in pixels (defaults to this.tileSize)
+   * @param {Object} [paletteBM] - Palette LUT from colorpaletteForBlueMarble(). Auto-generated if not provided.
    * @returns {Object} Collection of template bitmaps & buffers organized by tile coordinates
    * @since 0.65.4
    */
-  async createTemplateTiles() {
-    // // console.log('Template coordinates:', this.coords);
+  async createTemplateTiles(tileSize, paletteBM) {
+
+    if (tileSize) this.tileSize = tileSize;
+    if (!paletteBM) paletteBM = colorpaletteForBlueMarble(0);
 
     const shreadSize = 3; // Scale image factor for pixel art enhancement (must be odd)
     
     // Create bitmap using a more compatible approach
     let bitmap;
+    let useFallback = false;
     try {
       bitmap = await createImageBitmap(this.file);
     } catch (error) {
-      // // console.log('createImageBitmap failed, using fallback method');
       // Fallback: create image element and canvas
       const img = new Image();
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      const fallbackCanvas = document.createElement('canvas');
+      const fallbackCtx = fallbackCanvas.getContext('2d');
       
       await new Promise((resolve, reject) => {
         img.onload = () => {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx.drawImage(img, 0, 0);
+          fallbackCanvas.width = img.width;
+          fallbackCanvas.height = img.height;
+          fallbackCtx.drawImage(img, 0, 0);
           resolve();
         };
         img.onerror = reject;
         img.src = URL.createObjectURL(this.file);
       });
       
-      bitmap = { width: canvas.width, height: canvas.height, canvas, ctx };
+      bitmap = { width: fallbackCanvas.width, height: fallbackCanvas.height, canvas: fallbackCanvas, ctx: fallbackCtx };
+      useFallback = true;
     }
     const imageWidth = bitmap.width;
     const imageHeight = bitmap.height;
@@ -87,170 +96,132 @@ export default class Template {
     // Persist original image dimensions for later calculations (e.g., screenshots)
     this.imageWidth = imageWidth;
     this.imageHeight = imageHeight;
+
+    // -- Calculate total pixels using palette LUT (O(1) per pixel) --
+    const totalPixelCanvas = new OffscreenCanvas(imageWidth, imageHeight);
+    const totalPixelCtx = totalPixelCanvas.getContext('2d', { willReadFrequently: true });
+    totalPixelCtx.imageSmoothingEnabled = false;
     
-    // Calculate pixel counts - total and valid (non-transparent)
-    const totalPixels = imageWidth * imageHeight;
+    if (useFallback) {
+      totalPixelCtx.drawImage(bitmap.canvas, 0, 0);
+    } else {
+      totalPixelCtx.drawImage(bitmap, 0, 0);
+    }
+    
+    const totalPixelMap = this.#calculateTotalPixelsFromImageData(
+      totalPixelCtx.getImageData(0, 0, imageWidth, imageHeight), paletteBM
+    );
+
+    let totalPixels = 0;
     let validPixels = 0;
     let transparentPixels = 0;
-    
-    // Count valid pixels by analyzing the image data
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = imageWidth;
-    tempCanvas.height = imageHeight;
-    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-    tempCtx.imageSmoothingEnabled = false;
-    
-    if (bitmap.canvas) {
-      // Fallback method - use canvas directly
-      tempCtx.drawImage(bitmap.canvas, 0, 0);
-    } else {
-      // Standard method - use bitmap
-      tempCtx.drawImage(bitmap, 0, 0);
-    }
-    
-    const imageData = tempCtx.getImageData(0, 0, imageWidth, imageHeight);
-    const data = imageData.data;
-    
-    for (let i = 0; i < data.length; i += 4) {
-      const alpha = data[i + 3];
-      if (alpha >= 64) { // Non-transparent pixel (alpha >= 64 like in template analysis)
-        validPixels++;
-      } else {
-        transparentPixels++;
+    const transparentColorID = 0;
+
+    for (const [color, total] of totalPixelMap) {
+      if (color == transparentColorID) {
+        transparentPixels += total;
+        continue;
       }
+      totalPixels += total;
+      validPixels += total;
     }
-    
-    // console.log(`Template pixel analysis - Dimensions: ${imageWidth}×${imageHeight}, Valid: ${validPixels.toLocaleString()}, Transparent: ${transparentPixels.toLocaleString()}`);
-    
-    // Store pixel counts in instance properties
+
     this.pixelCount = totalPixels;
     this.validPixelCount = validPixels;
     this.transparentPixelCount = transparentPixels;
 
-    const templateTiles = {}; // Holds the template tiles
-    const templateTilesBuffers = {}; // Holds the buffers of the template tiles
+    // -- Tile creation with OffscreenCanvas + compositing mask --
+    const templateTiles = {};
+    const templateTilesBuffers = {};
 
-    const canvas = document.createElement('canvas');
-    canvas.width = this.tileSize;
-    canvas.height = this.tileSize;
+    const canvas = new OffscreenCanvas(this.tileSize, this.tileSize);
     const context = canvas.getContext('2d', { willReadFrequently: true });
+
+    // Creates a mask where the middle pixel is white, and everything else is transparent
+    const canvasMask = new OffscreenCanvas(3, 3);
+    const contextMask = canvasMask.getContext("2d");
+    contextMask.clearRect(0, 0, 3, 3);
+    contextMask.fillStyle = "white";
+    contextMask.fillRect(1, 1, 1, 1);
 
     // For every tile...
     for (let pixelY = this.coords[3]; pixelY < imageHeight + this.coords[3]; ) {
 
-      // Draws the partial tile first, if any
-      // This calculates the size based on which is smaller:
-      // A. The top left corner of the current tile to the bottom right corner of the current tile
-      // B. The top left corner of the current tile to the bottom right corner of the image
       const drawSizeY = Math.min(this.tileSize - (pixelY % this.tileSize), imageHeight - (pixelY - this.coords[3]));
-
-      // console.log(`Math.min(${this.tileSize} - (${pixelY} % ${this.tileSize}), ${imageHeight} - (${pixelY - this.coords[3]}))`);
 
       for (let pixelX = this.coords[2]; pixelX < imageWidth + this.coords[2];) {
 
-        // console.log(`Pixel X: ${pixelX}\nPixel Y: ${pixelY}`);
-
-        // Draws the partial tile first, if any
-        // This calculates the size based on which is smaller:
-        // A. The top left corner of the current tile to the bottom right corner of the current tile
-        // B. The top left corner of the current tile to the bottom right corner of the image
         const drawSizeX = Math.min(this.tileSize - (pixelX % this.tileSize), imageWidth - (pixelX - this.coords[2]));
 
-        // console.log(`Math.min(${this.tileSize} - (${pixelX} % ${this.tileSize}), ${imageWidth} - (${pixelX - this.coords[2]}))`);
-
-        // console.log(`Draw Size X: ${drawSizeX}\nDraw Size Y: ${drawSizeY}`);
-
         // Change the canvas size and wipe the canvas
-        const canvasWidth = drawSizeX * shreadSize;// + (pixelX % this.tileSize) * shreadSize;
-        const canvasHeight = drawSizeY * shreadSize;// + (pixelY % this.tileSize) * shreadSize;
+        const canvasWidth = drawSizeX * shreadSize;
+        const canvasHeight = drawSizeY * shreadSize;
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
 
-        // console.log(`Draw X: ${drawSizeX}\nDraw Y: ${drawSizeY}\nCanvas Width: ${canvasWidth}\nCanvas Height: ${canvasHeight}`);
-
-        context.imageSmoothingEnabled = false; // Nearest neighbor
-
-        // console.log(`Getting X ${pixelX}-${pixelX + drawSizeX}\nGetting Y ${pixelY}-${pixelY + drawSizeY}`);
+        context.imageSmoothingEnabled = false;
 
         // Draws the template segment on this tile segment
-        context.clearRect(0, 0, canvasWidth, canvasHeight); // Clear any previous drawing (only runs when canvas size does not change)
+        context.clearRect(0, 0, canvasWidth, canvasHeight);
         
-        // Use different drawing method based on bitmap type
-        if (bitmap.canvas) {
-          // Fallback method using canvas
-          context.drawImage(
-            bitmap.canvas, // Canvas to draw from
-            pixelX - this.coords[2], // Coordinate X to draw from
-            pixelY - this.coords[3], // Coordinate Y to draw from
-            drawSizeX, // X width to draw from
-            drawSizeY, // Y height to draw from
-            0, // Coordinate X to draw at
-            0, // Coordinate Y to draw at
-            drawSizeX * shreadSize, // X width to draw at
-            drawSizeY * shreadSize // Y height to draw at
-          );
-        } else {
-          // Standard method using ImageBitmap
-          context.drawImage(
-            bitmap, // Bitmap image to draw
-            pixelX - this.coords[2], // Coordinate X to draw from
-            pixelY - this.coords[3], // Coordinate Y to draw from
-            drawSizeX, // X width to draw from
-            drawSizeY, // Y height to draw from
-            0, // Coordinate X to draw at
-            0, // Coordinate Y to draw at
-            drawSizeX * shreadSize, // X width to draw at
-            drawSizeY * shreadSize // Y height to draw at
-          );
-        }
+        const drawSource = useFallback ? bitmap.canvas : bitmap;
+        context.drawImage(
+          drawSource,
+          pixelX - this.coords[2],
+          pixelY - this.coords[3],
+          drawSizeX,
+          drawSizeY,
+          0,
+          0,
+          drawSizeX * shreadSize,
+          drawSizeY * shreadSize
+        );
 
-        // const final = await canvas.convertToBlob({ type: 'image/png' });
-        // const url = URL.createObjectURL(final); // Creates a blob URL
-        // window.open(url, '_blank'); // Opens a new tab with blob
-        // setTimeout(() => URL.revokeObjectURL(url), 60000); // Destroys the blob 1 minute later
+        // Apply compositing mask to keep only center pixels of each 3x3 block
+        context.save();
+        context.globalCompositeOperation = "destination-in";
+        context.fillStyle = context.createPattern(canvasMask, "repeat");
+        context.fillRect(0, 0, canvasWidth, canvasHeight);
+        context.restore();
 
-        const imageData = context.getImageData(0, 0, canvasWidth, canvasHeight); // Data of the image on the canvas
+        // Get image data for post-processing (disabled colors, #deface)
+        const imageData = context.getImageData(0, 0, canvasWidth, canvasHeight);
+        let needsPutBack = false;
 
+        // Post-process: handle #deface color and disabled colors
         for (let y = 0; y < canvasHeight; y++) {
           for (let x = 0; x < canvasWidth; x++) {
-            // For every pixel...
-            const pixelIndex = (y * canvasWidth + x) * 4; // Find the pixel index in an array where every 4 indexes are 1 pixel
-            
-            // Get current pixel RGB values
+            const pixelIndex = (y * canvasWidth + x) * 4;
             const r = imageData.data[pixelIndex];
             const g = imageData.data[pixelIndex + 1];
             const b = imageData.data[pixelIndex + 2];
-            
-            // Check if this color is disabled
-            const isDisabled = this.isColorDisabled([r, g, b]);
-            
-            // Debug: log disabled colors being processed
-            if (isDisabled && x % 10 === 0 && y % 10 === 0) {
-              // console.log(`Filtering disabled color [${r}, ${g}, ${b}] at pixel [${x}, ${y}]`);
-            }
-            
-            // If the pixel is the color #deface, draw a translucent gray checkerboard pattern
+            const a = imageData.data[pixelIndex + 3];
+
+            // Skip already transparent pixels (non-center pixels from mask)
+            if (a === 0) continue;
+
+            // Handle #deface color: draw translucent gray checkerboard
             if (r === 222 && g === 250 && b === 206) {
-              if ((x + y) % 2 === 0) { // Formula for checkerboard pattern
+              if ((x + y) % 2 === 0) {
                 imageData.data[pixelIndex] = 0;
                 imageData.data[pixelIndex + 1] = 0;
                 imageData.data[pixelIndex + 2] = 0;
-                imageData.data[pixelIndex + 3] = 32; // Translucent black
-              } else { // Transparent negative space
+                imageData.data[pixelIndex + 3] = 32;
+              } else {
                 imageData.data[pixelIndex + 3] = 0;
               }
-            } else if (isDisabled) {
+              needsPutBack = true;
+            } else if (this.isColorDisabled([r, g, b])) {
               // Make disabled colors transparent
               imageData.data[pixelIndex + 3] = 0;
-            } else if (x % shreadSize !== 1 || y % shreadSize !== 1) { // Otherwise only draw the middle pixel
-              imageData.data[pixelIndex + 3] = 0; // Make the pixel transparent on the alpha channel
+              needsPutBack = true;
             }
           }
         }
 
-        // console.log(`Shreaded pixels for ${pixelX}, ${pixelY}`, imageData);
-
-        context.putImageData(imageData, 0, 0);
+        if (needsPutBack) {
+          context.putImageData(imageData, 0, 0);
+        }
 
         // Creates the "0000,0000,000,000" key name
         const templateTileName = `${(this.coords[0] + Math.floor(pixelX / 1000))
@@ -261,35 +232,28 @@ export default class Template {
           .toString()
           .padStart(3, '0')},${(pixelY % 1000).toString().padStart(3, '0')}`;
 
+        // Store Uint32Array for fast pixel comparison
+        const finalImageData = needsPutBack ? imageData : context.getImageData(0, 0, canvasWidth, canvasHeight);
+        this.chunked32[templateTileName] = new Uint32Array(finalImageData.data.buffer);
+
         // Create bitmap using compatible method
         try {
           templateTiles[templateTileName] = await createImageBitmap(canvas);
         } catch (error) {
-          // console.log('createImageBitmap failed for tile, using canvas directly');
-          templateTiles[templateTileName] = canvas.cloneNode(true);
+          templateTiles[templateTileName] = canvas.transferToImageBitmap?.() ?? await createImageBitmap(canvas);
         }
         
-        // Convert canvas to buffer using compatible method
+        // Convert canvas to buffer
         try {
-          const canvasBlob = await new Promise((resolve, reject) => {
-            if (canvas.convertToBlob) {
-              canvas.convertToBlob().then(resolve).catch(reject);
-            } else {
-              // Fallback for browsers that don't support convertToBlob
-              canvas.toBlob(resolve, 'image/png');
-            }
-          });
+          const canvasBlob = await canvas.convertToBlob();
           const canvasBuffer = await canvasBlob.arrayBuffer();
           const canvasBufferBytes = Array.from(new Uint8Array(canvasBuffer));
           templateTilesBuffers[templateTileName] = uint8ToBase64(canvasBufferBytes);
         } catch (error) {
-          // console.log('Canvas blob conversion failed, using data URL fallback');
-          const dataURL = canvas.toDataURL('image/png');
-          const base64 = dataURL.split(',')[1];
-          templateTilesBuffers[templateTileName] = base64;
+          debugLog('Canvas blob conversion failed for tile:', templateTileName);
+          // OffscreenCanvas should always support convertToBlob, but handle edge cases
+          templateTilesBuffers[templateTileName] = '';
         }
-
-        // console.log(templateTiles);
 
         pixelX += drawSizeX;
       }
@@ -297,9 +261,52 @@ export default class Template {
       pixelY += drawSizeY;
     }
 
-    // console.log('Template Tiles: ', templateTiles);
-    // console.log('Template Tiles Buffers: ', templateTilesBuffers);
     return { templateTiles, templateTilesBuffers };
+  }
+
+  /** Calculates the total pixels for each color using the palette LUT for O(1) matching.
+   * @param {ImageData} imageData - The image data to analyze
+   * @param {Object} paletteBM - The palette and LUT from colorpaletteForBlueMarble()
+   * @returns {Map<number, number>} Map of color ID to pixel count
+   * @since 0.88.6
+   */
+  #calculateTotalPixelsFromImageData(imageData, paletteBM) {
+    const buffer32Arr = new Uint32Array(imageData.data.buffer);
+    const { LUT: lookupTable } = paletteBM;
+
+    const colorCounts = new Map();
+
+    for (let pixelIndex = 0; pixelIndex < buffer32Arr.length; pixelIndex++) {
+      const pixel = buffer32Arr[pixelIndex];
+      let bestColorID = -2; // Default to "Other"
+
+      if ((pixel >>> 24) == 0) {
+        bestColorID = 0; // Transparent
+      } else {
+        bestColorID = lookupTable.get(pixel) ?? -2;
+      }
+
+      const count = colorCounts.get(bestColorID);
+      colorCounts.set(bestColorID, count ? count + 1 : 1);
+    }
+
+    return colorCounts;
+  }
+
+  /** Calculates top left coordinate of template from chunked tile keys.
+   * Uses Template.chunked to update Template.coords
+   * @since 0.88.504
+   */
+  calculateCoordsFromChunked() {
+    let topLeftCoord = [Infinity, Infinity, Infinity, Infinity];
+    const tileKeys = Object.keys(this.chunked).sort();
+    tileKeys.forEach((key) => {
+      const [tileX, tileY, pixelX, pixelY] = key.split(',').map(Number);
+      if ((tileY < topLeftCoord[1]) || (tileY == topLeftCoord[1] && tileX < topLeftCoord[0])) {
+        topLeftCoord = [tileX, tileY, pixelX, pixelY];
+      }
+    });
+    this.coords = topLeftCoord;
   }
 
   /** Disables a specific color in the template

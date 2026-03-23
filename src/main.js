@@ -9,6 +9,7 @@ import TemplateManager from './templateManager.js';
 import {canvasPosToLatLng, debugLog, getDebugLoggingEnabled, saveDebugLoggingEnabled, updateColorAvailability, loadColorAvailability} from './utils.js';
 import * as icons from './icons.js';
 import * as ArtExtractor from './artExtractor.js';
+import * as TemplatePlacer from './templatePlacer.js';
 import {
     getCachedTileCount,
     getSmartCacheStats,
@@ -3167,11 +3168,11 @@ function showTemplateManageDialog(instance) {
           width: 100% !important;
         }
         
-        /* Button container - 4x1 grid layout (linha horizontal) */
+        /* Button container - 5x1 grid layout (linha horizontal) */
         #bm-template-manage-overlay .templateInfoControls {
           max-width: 100% !important;
           display: grid !important;
-          grid-template-columns: repeat(4, 1fr) !important;
+          grid-template-columns: repeat(5, 1fr) !important;
           gap: 6px !important;
           justify-items: stretch !important;
           margin-top: 8px !important;
@@ -3627,6 +3628,30 @@ function showTemplateManageDialog(instance) {
       templateManager.downloadTemplateJSON(templateKey);
       instance.handleDisplayStatus(`Exported "${templateName}"`);
     };
+
+    // Move button
+    const moveBtn = document.createElement('button');
+    moveBtn.innerHTML = icons.templatePlacerIcon;
+    moveBtn.title = 'Move this template to a new position';
+    moveBtn.style.cssText = `
+      padding: 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      min-width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+    `;
+
+    moveBtn.onclick = async () => {
+      instance.handleDisplayStatus(`Reconstructing "${templateName}" image...`);
+      document.body.removeChild(overlay);
+      await moveTemplateFlow(instance, templateManager, templateKey, templateName);
+    };
     
     // Toggle button
     const toggleBtn = document.createElement('button');
@@ -3795,6 +3820,7 @@ function showTemplateManageDialog(instance) {
     };
 
     buttonContainer.appendChild(exportBtn);
+    buttonContainer.appendChild(moveBtn);
     buttonContainer.appendChild(flyBtn);
     buttonContainer.appendChild(deleteBtn);
     buttonContainer.appendChild(toggleBtn);
@@ -3919,8 +3945,7 @@ function buildOverlayMain() {
             const header = document.querySelector('#bm-contain-header');
             const dragBar = document.querySelector('#bm-bar-drag');
             const coordsContainer = document.querySelector('#bm-contain-coords');
-            const coordsButton = document.querySelector('#bm-button-coords');
-            const createButton = document.querySelector('#bm-button-create');
+            const uploadButton = document.querySelector('#bm-button-upload-template');
             const manageButton = document.querySelector('#bm-button-manage');
             const pauseButton = document.querySelector('#bm-button-pause-tiles');
             const coordInputs = document.querySelectorAll('#bm-contain-coords input');
@@ -3943,7 +3968,6 @@ function buildOverlayMain() {
                 '#bm-contain-userinfo',              // User information section (username, droplets, level)
                 '#bm-overlay #bm-separator',         // Visual separator lines
                 '#bm-contain-automation > *:not(#bm-contain-coords)', // Automation section excluding coordinates
-                'div:has(> #bm-input-file-template)', // Template file upload interface container
                 '#bm-contain-buttons-action',        // Action buttons container
                 `#${instance.outputStatusId}`        // Status log textarea for user feedback
               ];
@@ -3966,14 +3990,9 @@ function buildOverlayMain() {
                 coordsContainer.style.display = 'none';
               }
               
-              // Hide coordinate button (pin icon)
-              if (coordsButton) {
-                coordsButton.style.display = 'none';
-              }
-              
               // Hide create template button
-              if (createButton) {
-                createButton.style.display = 'none';
+              if (uploadButton) {
+                uploadButton.style.display = 'none';
               }
 
               // Hide manage templates button
@@ -4091,15 +4110,10 @@ function buildOverlayMain() {
                 coordsContainer.style.margin = '';            // Reset margins
               }
               
-              // Restore coordinate button visibility
-              if (coordsButton) {
-                coordsButton.style.display = '';
-              }
-              
-              // Restore create button visibility and reset positioning
-              if (createButton) {
-                createButton.style.display = '';
-                createButton.style.marginTop = '';
+              // Restore upload button visibility and reset positioning
+              if (uploadButton) {
+                uploadButton.style.display = '';
+                uploadButton.style.marginTop = '';
               }
 
               // Restore manage button visibility and reset positioning
@@ -4263,25 +4277,6 @@ function buildOverlayMain() {
       // .addButtonHelp({'title': 'Controls the website as if it were possessed.'}).buildElement()
       // .addBr().buildElement()
       .addDiv({'id': 'bm-contain-coords'})
-        .addDiv({ id: 'bm-coords-title' })
-          .addDiv({ innerHTML: icons.pinIcon }).buildElement()
-          .addP({ innerHTML: 'Coordinates:' }).buildElement()
-          .addButton({'id': 'bm-button-coords', 'innerHTML': icons.pointerIcon + 'Detect', title: 'Set the location to the pixel you\'ve selected'},
-            (instance, button) => {
-              button.onclick = () => {
-                const coords = instance.apiManager?.coordsTilePixel; // Retrieves the coords from the API manager
-                if (!coords?.[0]) {
-                  instance.handleDisplayError('Coordinates are malformed! Did you try clicking on the canvas first?');
-                  return;
-                }
-                instance.updateInnerHTML('bm-input-tx', coords?.[0] || '');
-                instance.updateInnerHTML('bm-input-ty', coords?.[1] || '');
-                instance.updateInnerHTML('bm-input-px', coords?.[2] || '');
-                instance.updateInnerHTML('bm-input-py', coords?.[3] || '');
-              }
-            }
-          ).buildElement()
-        .buildElement()
         .addDiv({ id: 'bm-contain-inputs'})
           .addP({ textContent: 'Tile: '}).buildElement()
           .addInput({'type': 'number', 'id': 'bm-input-tx', 'placeholder': 'T1 X', 'min': 0, 'max': 2047, 'step': 1, 'required': true}).buildElement()
@@ -4352,42 +4347,11 @@ function buildOverlayMain() {
         }).buildElement()
       .buildElement()
       .addDiv({'id': 'bm-contain-buttons-template'})
-        .addInputFile({'id': 'bm-input-file-template', 'textContent': 'Upload Template', 'accept': 'image/png, image/jpeg, image/webp, image/bmp, image/gif'})
-        .addButton({'id': 'bm-button-create', innerHTML: icons.createIcon + 'Create'}, (instance, button) => {
+        .addButton({'id': 'bm-button-upload-template', innerHTML: icons.uploadIcon + 'Upload Template'}, (instance, button) => {
           button.onclick = () => {
-            const input = document.querySelector('#bm-input-file-template');
-
-            const coordTlX = document.querySelector('#bm-input-tx');
-            if (!coordTlX.checkValidity()) {coordTlX.reportValidity(); instance.handleDisplayError('Coordinates are malformed! Did you try clicking on the canvas first?'); return;}
-            const coordTlY = document.querySelector('#bm-input-ty');
-            if (!coordTlY.checkValidity()) {coordTlY.reportValidity(); instance.handleDisplayError('Coordinates are malformed! Did you try clicking on the canvas first?'); return;}
-            const coordPxX = document.querySelector('#bm-input-px');
-            if (!coordPxX.checkValidity()) {coordPxX.reportValidity(); instance.handleDisplayError('Coordinates are malformed! Did you try clicking on the canvas first?'); return;}
-            const coordPxY = document.querySelector('#bm-input-py');
-            if (!coordPxY.checkValidity()) {coordPxY.reportValidity(); instance.handleDisplayError('Coordinates are malformed! Did you try clicking on the canvas first?'); return;}
-
-            // Kills itself if there is no file
-            if (!input?.files[0]) {instance.handleDisplayError(`No file selected!`); return;}
-
-            templateManager.createTemplate(input.files[0], input.files[0]?.name.replace(/\.[^/.]+$/, ''), [Number(coordTlX.value), Number(coordTlY.value), Number(coordPxX.value), Number(coordPxY.value)]);
-
-            // Invalidate cache after template creation
-            invalidateTemplateCache();
-
-            // Update mini tracker after template creation
-            setTimeout(() => {
-              updateMiniTracker();
-              updateColorMenuDisplay(false, true); // Force update without resetting filters
-            }, 500);
-
-            // console.log(`TCoords: ${apiManager.templateCoordsTilePixel}\nCoords: ${apiManager.coordsTilePixel}`);
-            // apiManager.templateCoordsTilePixel = apiManager.coordsTilePixel; // Update template coords
-            // console.log(`TCoords: ${apiManager.templateCoordsTilePixel}\nCoords: ${apiManager.coordsTilePixel}`);
-            // templateManager.setTemplateImage(input.files[0]);
-
-                      instance.handleDisplayStatus(`Drew to canvas!`);
-        }
-      }).buildElement()
+            startTemplatePlacerFlow(instance, templateManager);
+          };
+        }).buildElement()
       .addButton({'id': 'bm-button-manage', innerHTML: icons.manageIcon + 'Manage'}, (instance, button) => {
         button.onclick = () => {
           showTemplateManageDialog(instance);
@@ -8513,6 +8477,26 @@ function invalidateTemplateCache() {
 let isSpaceHoverActive = false;
 let lastPickedColorKey = null;
 
+/** Cached enabled state – avoids calling GM_getValue on every event */
+let _spaceHoverEnabledCache = null;
+
+/** Returns cached enabled state, refreshing from storage only when cache is cold */
+function isSpaceHoverEnabled() {
+  if (_spaceHoverEnabledCache === null) {
+    _spaceHoverEnabledCache = getSpaceHoverColorPickerEnabled();
+  }
+  return _spaceHoverEnabledCache;
+}
+
+/** Invalidate the cache (call after settings change) */
+function invalidateSpaceHoverCache() {
+  _spaceHoverEnabledCache = null;
+}
+
+/** Last known mouse position for immediate pick on Space keydown */
+let _lastMouseX = 0;
+let _lastMouseY = 0;
+
 /** Reverse lookup map: RGB string -> color ID */
 const RGB_TO_COLOR_ID = {};
 Object.entries(COLOR_PALETTE_MAP).forEach(([colorId, rgb]) => {
@@ -8535,15 +8519,36 @@ Object.entries(COLOR_PALETTE_MAP).forEach(([colorId, rgb]) => {
 function initializeSpaceHoverColorPicker() {
   debugLog('🎨 [Space+Hover] Initializing color picker...');
   
+  // Track mouse position so we can pick immediately on Space keydown
+  // Also pre-warm caches to avoid cold-start cost on first pick
+  document.addEventListener('mousemove', (event) => {
+    _lastMouseX = event.clientX;
+    _lastMouseY = event.clientY;
+    // Keep canvas rect cache warm
+    if (!_cachedMapCanvas || !_cachedMapCanvas.isConnected) {
+      _cachedMapCanvas = document.querySelector('div#map canvas.maplibregl-canvas');
+    }
+    if (_cachedMapCanvas) {
+      _cachedCanvasRect = _cachedMapCanvas.getBoundingClientRect();
+      _cachedCanvasRectTime = performance.now();
+    }
+    // Keep map reference cache warm (unsafeWindow proxy is slow on first access)
+    if (!_cachedMap) {
+      try { _cachedMap = unsafeWindow.bmmap; _cachedMapTime = performance.now(); } catch (e) { /* ignore */ }
+    }
+  }, { passive: true });
+  
   // Track Space key state - use capture phase to run before other handlers
   document.addEventListener('keydown', (event) => {
-    if (event.code === 'Space' && !event.repeat && getSpaceHoverColorPickerEnabled()) {
+    if (event.code === 'Space' && !event.repeat && isSpaceHoverEnabled()) {
       isSpaceHoverActive = true;
       document.body.style.cursor = 'crosshair';
       debugLog('🎨 [Space+Hover] Color picker mode activated');
       // Prevent default space behavior (scrolling) and stop propagation
       event.preventDefault();
       event.stopPropagation();
+      // Immediately pick color at current mouse position (no waiting for mousemove)
+      pickColorAtScreen(_lastMouseX, _lastMouseY);
     }
   }, { capture: true });
   
@@ -8561,55 +8566,17 @@ function initializeSpaceHoverColorPicker() {
   debugLog('🎨 [Space+Hover] Color picker initialized successfully');
 }
 
-// Pending coordinate conversion requests
+// Pending coordinate conversion requests (used by screenToTilePixelAsync)
 const pendingCoordRequests = new Map();
 
-// Listen for coordinate conversion responses from page context
+// Listen for coordinate conversion responses from page context (async path only)
 window.addEventListener('message', (event) => {
   if (event.data?.source === 'blue-marble-coord-response') {
     const requestId = event.data['requestId'];
-    const coords = event.data['coords'];
-    const error = event.data['error'];
-    
-    // Handle async requests
     const pending = pendingCoordRequests.get(requestId);
     if (pending) {
-      pending.resolve({ coords, error });
+      pending.resolve({ coords: event.data['coords'], error: event.data['error'] });
       pendingCoordRequests.delete(requestId);
-      return;
-    }
-    
-    // Handle hover requests - do the color picking here
-    if (requestId && requestId.startsWith('hover-') && coords && !error) {
-      // Only process if shift is still held and feature is enabled
-      if (!isSpaceHoverActive || !getSpaceHoverColorPickerEnabled()) {
-        return;
-      }
-      
-      const tileX = coords['tileX'];
-      const tileY = coords['tileY'];
-      const pixelX = coords['pixelX'];
-      const pixelY = coords['pixelY'];
-      
-      // Get the template pixel color at this position
-      const color = templateManager.getTemplatePixelColorAt(tileX, tileY, pixelX, pixelY);
-      if (!color) {
-        return;
-      }
-      
-      // Convert RGB to color ID
-      const rgbKey = `${color.r},${color.g},${color.b}`;
-      const colorId = RGB_TO_COLOR_ID[rgbKey];
-      
-      if (!colorId) {
-        return;
-      }
-      
-      // Click the corresponding color button
-      const colorButton = document.querySelector(`button#${CSS.escape(colorId)}`);
-      if (colorButton && !colorButton.classList.contains('selected')) {
-        colorButton.click();
-      }
     }
   }
 });
@@ -8672,40 +8639,128 @@ async function screenToTilePixelAsync(screenX, screenY) {
   }
 }
 
-/** Convert screen coordinates to tile/pixel coordinates (sync cached version for mousemove)
- * Uses last known map state for immediate response
+/** Convert screen coordinates to tile/pixel coordinates synchronously
+ * Uses unsafeWindow.bmmap.transform directly — no postMessage round-trip
+ * @param {number} screenX - Screen X coordinate (clientX)
+ * @param {number} screenY - Screen Y coordinate (clientY)
+ * @returns {{tileX: number, tileY: number, pixelX: number, pixelY: number}|null}
  */
-let lastKnownMapState = null;
+/** Cached canvas element reference — avoids DOM querySelector on every call */
+let _cachedMapCanvas = null;
+/** Cached canvas bounding rect — invalidated on resize/scroll */
+let _cachedCanvasRect = null;
+let _cachedCanvasRectTime = 0;
+/** Cached map reference — avoids unsafeWindow proxy overhead on every call */
+let _cachedMap = null;
+let _cachedMapTime = 0;
 
-function screenToTilePixel(screenX, screenY) {
+function screenToTilePixelSync(screenX, screenY) {
   try {
-    // Get map canvas element and its position
-    const canvas = document.querySelector('div#map canvas.maplibregl-canvas');
-    if (!canvas) {
+    // Cache unsafeWindow.bmmap — the TamperMonkey proxy is slow (~10ms first access)
+    // Refresh every 5s to catch map re-init (rare)
+    const now = performance.now();
+    if (!_cachedMap || (now - _cachedMapTime) > 5000) {
+      _cachedMap = unsafeWindow.bmmap;
+      _cachedMapTime = now;
+    }
+    if (!_cachedMap || !_cachedMap.transform) {
+      _cachedMap = null;
+      return null;
+    }
+    // Cache canvas element (invalidate if detached from DOM)
+    if (!_cachedMapCanvas || !_cachedMapCanvas.isConnected) {
+      _cachedMapCanvas = document.querySelector('div#map canvas.maplibregl-canvas');
+      _cachedCanvasRect = null;
+    }
+    if (!_cachedMapCanvas) {
       return null;
     }
     
-    const rect = canvas.getBoundingClientRect();
+    // Use cached rect (pre-warmed in mousemove listener)
+    if (!_cachedCanvasRect || (now - _cachedCanvasRectTime) > 200) {
+      _cachedCanvasRect = _cachedMapCanvas.getBoundingClientRect();
+      _cachedCanvasRectTime = now;
+    }
+    const canvasX = screenX - _cachedCanvasRect.left;
+    const canvasY = screenY - _cachedCanvasRect.top;
     
-    // Convert screen coords to canvas-relative coords
-    const canvasX = screenX - rect.left;
-    const canvasY = screenY - rect.top;
+    const t = _cachedMap.transform;
+    const center = t.center;
+    const zoom = t.zoom;
+    const width = t.width || 1920;
+    const height = t.height || 959;
     
-    // We need to use postMessage but can't do async in mousemove efficiently
-    // Instead, post the request and let the response handler update state
-    const requestId = 'hover-' + Date.now();
+    const centerLng = center['lng'];
+    const centerLat = center['lat'];
     
-    window.postMessage({
-      'source': 'blue-marble-coord-request',
-      'requestId': requestId,
-      'canvasX': canvasX,
-      'canvasY': canvasY
-    }, '*');
+    if (centerLng === undefined || centerLat === undefined || zoom === undefined) {
+      return null;
+    }
     
-    // Return null - the actual color picking will happen in the response handler
-    return null;
+    const worldSize = 512 * Math.pow(2, zoom);
+    const canvasCenterX = width / 2;
+    const canvasCenterY = height / 2;
+    const offsetX = canvasX - canvasCenterX;
+    const offsetY = canvasY - canvasCenterY;
+    
+    const lngPerPixel = 360 / worldSize;
+    const lng = centerLng + offsetX * lngPerPixel;
+    
+    const centerLatRad = centerLat * Math.PI / 180;
+    const mercY = Math.log(Math.tan(Math.PI / 4 + centerLatRad / 2));
+    const mercYPerPixel = 2 * Math.PI / worldSize;
+    const newMercY = mercY - offsetY * mercYPerPixel;
+    const lat = (2 * Math.atan(Math.exp(newMercY)) - Math.PI / 2) * 180 / Math.PI;
+    
+    const mapSize = 2048000;
+    const x = (lng + 180) / 360;
+    const latRad = lat * Math.PI / 180;
+    const y = (Math.PI - Math.log(Math.tan(Math.PI / 4 + latRad / 2))) / (2 * Math.PI);
+    
+    const actualX = Math.floor(x * mapSize);
+    const actualY = Math.floor(y * mapSize);
+    
+    return {
+      tileX: Math.floor(actualX / 1000),
+      tileY: Math.floor(actualY / 1000),
+      pixelX: actualX % 1000,
+      pixelY: actualY % 1000
+    };
   } catch (error) {
     return null;
+  }
+}
+
+/** Pick the template color at screen coords and click the palette button.
+ * Fully synchronous — runs in the same frame as the input event.
+ * @param {number} screenX
+ * @param {number} screenY
+ */
+function pickColorAtScreen(screenX, screenY) {
+  const coords = screenToTilePixelSync(screenX, screenY);
+  if (!coords) {
+    return;
+  }
+  
+  const color = templateManager.getTemplatePixelColorAt(coords.tileX, coords.tileY, coords.pixelX, coords.pixelY);
+  if (!color) {
+    return;
+  }
+  
+  const rgbKey = `${color.r},${color.g},${color.b}`;
+  if (rgbKey === lastPickedColorKey) {
+    return; // Same color as last pick, skip redundant DOM work
+  }
+  
+  const colorId = RGB_TO_COLOR_ID[rgbKey];
+  if (!colorId) {
+    return;
+  }
+  
+  const colorButton = document.querySelector(`button#${CSS.escape(colorId)}`);
+  if (colorButton && !colorButton.classList.contains('selected')) {
+    colorButton.click();
+    lastPickedColorKey = rgbKey;
   }
 }
 
@@ -8715,12 +8770,8 @@ function handleSpaceHoverColorPick(event) {
   if (!isSpaceHoverActive) {
     return;
   }
-  if (!getSpaceHoverColorPickerEnabled()) {
-    return;
-  }
   
-  // Send coordinate conversion request - color picking happens in response handler
-  screenToTilePixel(event.clientX, event.clientY);
+  pickColorAtScreen(event.clientX, event.clientY);
 }
 
 // ====== ERROR MAP MODE (LURK INTEGRATION) ======
@@ -11253,6 +11304,149 @@ window.clearColorMenuCache = clearColorMenuCache;
 window.updateColorMenuCache = updateColorMenuCache;
 
 
+/** Opens a file picker and starts the template placer drag-to-place flow.
+ * When the user confirms, the template is uploaded at the chosen coordinates.
+ * @param {Overlay} overlayInstance - The overlay instance (for status messages)
+ * @param {TemplateManager} templateManager - The template manager instance
+ * @since 1.1.0
+ */
+function startTemplatePlacerFlow(overlayInstance, templateManager) {
+  // Create a hidden file input to pick the image
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.png,.jpg,.jpeg,.gif,.bmp,.webp';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  input.onchange = () => {
+    const file = input.files?.[0];
+    input.remove();
+    if (!file) return;
+
+    TemplatePlacer.startPlacer(file, {
+      onConfirm: async (result) => {
+        console.log('[TemplatePlacer] onConfirm received:', result);
+        try {
+          // Fill coordinate inputs with the confirmed position
+          const txInput = document.getElementById('bm-input-tx');
+          const tyInput = document.getElementById('bm-input-ty');
+          const pxInput = document.getElementById('bm-input-px');
+          const pyInput = document.getElementById('bm-input-py');
+
+          if (txInput) txInput.value = result.tileX;
+          if (tyInput) tyInput.value = result.tileY;
+          if (pxInput) pxInput.value = result.pixelX;
+          if (pyInput) pyInput.value = result.pixelY;
+
+          console.log('[TemplatePlacer] Calling createTemplate...');
+          // Create the template with the chosen coordinates
+          await templateManager.createTemplate(
+            result.file,
+            result.fileName,
+            [result.tileX, result.tileY, result.pixelX, result.pixelY]
+          );
+          console.log('[TemplatePlacer] createTemplate completed successfully');
+
+          // Invalidate cache and update UI (same as normal Create button)
+          invalidateTemplateCache();
+          setTimeout(() => {
+            updateMiniTracker();
+            updateColorMenuDisplay(false, true);
+          }, 500);
+
+          if (overlayInstance) {
+            overlayInstance.handleDisplayStatus(`Template "${result.fileName}" placed at Tile(${result.tileX}, ${result.tileY}) Pixel(${result.pixelX}, ${result.pixelY})`);
+          }
+        } catch (err) {
+          console.error('[TemplatePlacer] Error in onConfirm:', err);
+          if (overlayInstance) {
+            overlayInstance.handleDisplayError(`Template placement failed: ${err.message}`);
+          }
+        }
+      },
+      onCancel: () => {
+        if (overlayInstance) {
+          overlayInstance.handleDisplayStatus('Template placement cancelled.');
+        }
+      }
+    });
+  };
+
+  input.click();
+}
+
+/**
+ * Launches the template placer to move an existing template to a new position.
+ * Reconstructs the image from stored tile data, lets the user drag it to a new location,
+ * then deletes the old template and creates a new one at the confirmed position.
+ * @param {Object} overlayInstance - The main Overlay instance
+ * @param {TemplateManager} tmManager - The template manager
+ * @param {string} templateKey - The key of the template to move (e.g., "0 $Z")
+ * @param {string} templateName - Display name (for status messages)
+ * @since 1.1.0
+ */
+async function moveTemplateFlow(overlayInstance, tmManager, templateKey, templateName) {
+  try {
+    const result = await tmManager.reconstructImageBlob(templateKey);
+    if (!result) {
+      overlayInstance?.handleDisplayError('Failed to reconstruct template image.');
+      return;
+    }
+
+    const file = new File([result.blob], `${result.name}.png`, { type: 'image/png' });
+
+    // Calculate the template's current absolute position for initial placement
+    const templateData = tmManager.templatesJSON?.templates?.[templateKey];
+    const coords = templateData?.coords?.split(', ').map(Number);
+    let initialPosition = null;
+    if (coords && coords.length === 4) {
+      initialPosition = {
+        absX: coords[0] * 1000 + coords[2],
+        absY: coords[1] * 1000 + coords[3]
+      };
+    }
+
+    TemplatePlacer.startPlacer(file, {
+      initialPosition,
+      onConfirm: async (confirmResult) => {
+        try {
+          overlayInstance?.handleDisplayStatus(`Moving "${templateName}" to new position...`);
+
+          // Delete the old template
+          await tmManager.deleteTemplate(templateKey);
+
+          // Create new template at the new position
+          await tmManager.createTemplate(
+            confirmResult.file,
+            confirmResult.fileName,
+            [confirmResult.tileX, confirmResult.tileY, confirmResult.pixelX, confirmResult.pixelY]
+          );
+
+          invalidateTemplateCache();
+          setTimeout(() => {
+            updateMiniTracker();
+            updateColorMenuDisplay(false, true);
+          }, 500);
+
+          overlayInstance?.handleDisplayStatus(
+            `Moved "${templateName}" to Tile(${confirmResult.tileX}, ${confirmResult.tileY}) Pixel(${confirmResult.pixelX}, ${confirmResult.pixelY})`
+          );
+        } catch (err) {
+          console.error('[MoveTemplate] Error:', err);
+          overlayInstance?.handleDisplayError(`Move failed: ${err.message}`);
+        }
+      },
+      onCancel: () => {
+        overlayInstance?.handleDisplayStatus('Template move cancelled.');
+      }
+    });
+  } catch (err) {
+    console.error('[MoveTemplate] Reconstruction error:', err);
+    overlayInstance?.handleDisplayError(`Could not reconstruct template: ${err.message}`);
+  }
+}
+
+
 /** Builds and displays the crosshair settings overlay
  * @since 1.0.0
  */
@@ -13139,6 +13333,7 @@ function buildCrosshairSettingsOverlay() {
     spaceHoverToggleText.style.color = tempSpaceHoverEnabled ? '#4caf50' : '#f44336';
     // Save immediately when toggled
     saveSpaceHoverColorPickerEnabled(tempSpaceHoverEnabled);
+    invalidateSpaceHoverCache(); // Refresh cached enabled state
     debugLog(`Space+Hover color picker ${tempSpaceHoverEnabled ? 'enabled' : 'disabled'}`);
   };
 

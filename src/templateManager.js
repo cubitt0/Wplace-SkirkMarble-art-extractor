@@ -190,9 +190,9 @@ export default class TemplateManager {
     });
     const { templateTiles: tempTiles, templateTilesBuffers: tempBuffers } = await tempTemplate.createTemplateTiles(this.tileSize);
     tempTemplate.chunked = tempTiles;
+    tempTemplate._tileIndex = null; // Invalidate lookup index
 
     // Check for duplicate templates (same name and pixel count)
-    // DEBUG: Log template creation details
     debugLog(` Creating template: "${name}" with ${tempTemplate.pixelCount} pixels`);
     debugLog(` Existing templates:`, Object.keys(this.templatesJSON.templates));
     
@@ -237,6 +237,7 @@ export default class TemplateManager {
     });
     const { templateTiles, templateTilesBuffers } = await template.createTemplateTiles(this.tileSize);
     template.chunked = templateTiles;
+    template._tileIndex = null; // Invalidate lookup index
 
     // Appends a child into the templates object
     // The child's name is the number of templates already in the list (sort order) plus the encoded player ID
@@ -1386,6 +1387,23 @@ export default class TemplateManager {
             coords: coords
           });
           template.chunked = templateTiles;
+          template._tileIndex = null; // Invalidate lookup index
+          
+          // Build chunked32 (Uint32Array per tile) for fast pixel lookup
+          // Storage only has bitmap data, so we extract pixel data here
+          template.chunked32 = {};
+          for (const [tileKey, bitmap] of Object.entries(templateTiles)) {
+            try {
+              const osc = new OffscreenCanvas(bitmap.width, bitmap.height);
+              const ctx = osc.getContext('2d', { willReadFrequently: true });
+              ctx.drawImage(bitmap, 0, 0);
+              const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+              template.chunked32[tileKey] = new Uint32Array(imageData.data.buffer);
+            } catch (e) {
+              // OffscreenCanvas may not be available in all contexts; skip silently
+            }
+          }
+          
           // Restore pixel count from stored data for fast loading
           template.pixelCount = templateValue.pixelCount || 0;
           
@@ -1482,6 +1500,91 @@ export default class TemplateManager {
       console.error('Failed to rename template', e);
       return false;
     }
+  }
+
+  /** Reconstructs the original image from a template's stored tile data.
+   * Reverses the 3x-scaled center-pixel tile storage into a 1:1 pixel image.
+   * @param {string} templateKey - The key of the template (e.g., "0 $Z")
+   * @returns {Promise<{blob: Blob, width: number, height: number, name: string}|null>}
+   * @since 1.1.0
+   */
+  async reconstructImageBlob(templateKey) {
+    const templateData = this.templatesJSON?.templates?.[templateKey];
+    if (!templateData?.tiles || !templateData.coords) return null;
+
+    const coords = templateData.coords.split(', ').map(Number);
+    if (coords.length !== 4) return null;
+
+    const originAbsX = coords[0] * this.tileSize + coords[2];
+    const originAbsY = coords[1] * this.tileSize + coords[3];
+
+    const shreadSize = 3; // Must match createTemplateTiles
+    const tileEntries = Object.entries(templateData.tiles);
+    if (tileEntries.length === 0) return null;
+
+    // Decode all tile bitmaps and determine bounding box
+    const decoded = [];
+    let maxRight = 0;
+    let maxBottom = 0;
+
+    for (const [tileKey, encoded] of tileEntries) {
+      const parts = tileKey.split(',');
+      if (parts.length !== 4) continue;
+      const [tX, tY, pX, pY] = parts.map(Number);
+      const absX = tX * this.tileSize + pX;
+      const absY = tY * this.tileSize + pY;
+      const offsetX = absX - originAbsX;
+      const offsetY = absY - originAbsY;
+
+      const uint8 = base64ToUint8(encoded);
+      const blob = new Blob([uint8], { type: 'image/png' });
+      const bitmap = await createImageBitmap(blob);
+
+      // Original pixel dimensions for this tile chunk
+      const origW = bitmap.width / shreadSize;
+      const origH = bitmap.height / shreadSize;
+
+      decoded.push({ bitmap, offsetX, offsetY, origW, origH });
+      maxRight = Math.max(maxRight, offsetX + origW);
+      maxBottom = Math.max(maxBottom, offsetY + origH);
+    }
+
+    if (maxRight <= 0 || maxBottom <= 0) return null;
+
+    // Reconstruct the image by sampling center pixels (offset 1,1 in each 3x3 block)
+    const outCanvas = new OffscreenCanvas(maxRight, maxBottom);
+    const outCtx = outCanvas.getContext('2d', { willReadFrequently: true });
+
+    for (const { bitmap, offsetX, offsetY, origW, origH } of decoded) {
+      // Extract tile pixel data at 3x scale
+      const tileCanvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const tileCtx = tileCanvas.getContext('2d', { willReadFrequently: true });
+      tileCtx.drawImage(bitmap, 0, 0);
+      const tileData = tileCtx.getImageData(0, 0, bitmap.width, bitmap.height);
+
+      // Sample center pixels and write to output
+      const outData = outCtx.getImageData(offsetX, offsetY, origW, origH);
+      for (let y = 0; y < origH; y++) {
+        for (let x = 0; x < origW; x++) {
+          const srcIdx = ((y * shreadSize + 1) * bitmap.width + (x * shreadSize + 1)) * 4;
+          const dstIdx = (y * origW + x) * 4;
+          outData.data[dstIdx] = tileData.data[srcIdx];
+          outData.data[dstIdx + 1] = tileData.data[srcIdx + 1];
+          outData.data[dstIdx + 2] = tileData.data[srcIdx + 2];
+          outData.data[dstIdx + 3] = tileData.data[srcIdx + 3];
+        }
+      }
+      outCtx.putImageData(outData, offsetX, offsetY);
+      bitmap.close();
+    }
+
+    const resultBlob = await outCanvas.convertToBlob({ type: 'image/png' });
+    return {
+      blob: resultBlob,
+      width: maxRight,
+      height: maxBottom,
+      name: templateData.name || 'template'
+    };
   }
 
 
@@ -3033,7 +3136,20 @@ export default class TemplateManager {
           coords
         });
         template.chunked = templateTiles;
+        template._tileIndex = null; // Invalidate lookup index
         template.pixelCount = totalPixelCount;
+        
+        // Build chunked32 for fast pixel lookup
+        template.chunked32 = {};
+        for (const [tileKey, bitmap] of Object.entries(templateTiles)) {
+          try {
+            const osc = new OffscreenCanvas(bitmap.width, bitmap.height);
+            const ctx = osc.getContext('2d', { willReadFrequently: true });
+            ctx.drawImage(bitmap, 0, 0);
+            const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+            template.chunked32[tileKey] = new Uint32Array(imageData.data.buffer);
+          } catch (e) { /* skip */ }
+        }
 
         if (!this.templatesJSON.templates[newKey].pixelCount) {
           this.templatesJSON.templates[newKey].pixelCount = totalPixelCount;
@@ -3184,13 +3300,28 @@ export default class TemplateManager {
           continue;
         }
         
-        // Find matching tiles for this tile coordinate
-        const matchingTiles = Object.keys(template.chunked || {}).filter(tile =>
-          tile.startsWith(tileCoords)
-        );
+        // Find matching tiles using pre-built index (O(1)) instead of scanning all keys
+        const chunkedSource = template.chunked || {};
+        
+        // Lazily build tile-coordinate index on first use
+        if (!template._tileIndex) {
+          template._tileIndex = new Map();
+          for (const key of Object.keys(chunkedSource)) {
+            // Key format: "0000,0000,000,000" — first two groups are tile coords
+            const tilePrefix = key.substring(0, 9); // "0000,0000"
+            let arr = template._tileIndex.get(tilePrefix);
+            if (!arr) {
+              arr = [];
+              template._tileIndex.set(tilePrefix, arr);
+            }
+            arr.push(key);
+          }
+        }
+        
+        const matchingTiles = template._tileIndex.get(tileCoords) || [];
         
         for (const tileKey of matchingTiles) {
-          const tileBitmap = template.chunked[tileKey];
+          const tileBitmap = chunkedSource[tileKey];
           const coords = tileKey.split(',');
           const tilePixelX = parseInt(coords[2], 10); // Pixel offset X within tile chunk
           const tilePixelY = parseInt(coords[3], 10); // Pixel offset Y within tile chunk
@@ -3205,20 +3336,36 @@ export default class TemplateManager {
             continue;
           }
           
-          // Get pixel color from bitmap
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = tileBitmap.width;
-          tempCanvas.height = tileBitmap.height;
-          const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-          tempCtx.imageSmoothingEnabled = false;
-          tempCtx.drawImage(tileBitmap, 0, 0);
-          const imageData = tempCtx.getImageData(localX, localY, 1, 1);
-          const data = imageData.data;
+          let r, g, b, a;
           
-          const r = data[0];
-          const g = data[1];
-          const b = data[2];
-          const a = data[3];
+          // Fast path: direct Uint32Array lookup from chunked32 (avoids canvas creation)
+          const pixels32 = template.chunked32?.[tileKey];
+          if (pixels32) {
+            const index = localY * tileBitmap.width + localX;
+            if (index < 0 || index >= pixels32.length) {
+              continue;
+            }
+            const pixel = pixels32[index];
+            // Uint32Array from ImageData.data.buffer stores RGBA in little-endian as ABGR
+            r = pixel & 0xFF;
+            g = (pixel >>> 8) & 0xFF;
+            b = (pixel >>> 16) & 0xFF;
+            a = (pixel >>> 24) & 0xFF;
+          } else {
+            // Slow fallback: create temp canvas and read pixel (for templates without chunked32)
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = tileBitmap.width;
+            tempCanvas.height = tileBitmap.height;
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+            tempCtx.imageSmoothingEnabled = false;
+            tempCtx.drawImage(tileBitmap, 0, 0);
+            const imageData = tempCtx.getImageData(localX, localY, 1, 1);
+            const data = imageData.data;
+            r = data[0];
+            g = data[1];
+            b = data[2];
+            a = data[3];
+          }
           
           // Skip transparent pixels (alpha < 64) and #deface (transparent marker)
           if (a < 64) {
@@ -3228,8 +3375,6 @@ export default class TemplateManager {
             continue; // #deface is the transparent marker color
           }
           
-          // Found a valid template pixel color
-          debugLog(`[Color Picker] Found template color at (${tileX},${tileY},${pixelX},${pixelY}): rgb(${r},${g},${b})`);
           return { r, g, b };
         }
       }

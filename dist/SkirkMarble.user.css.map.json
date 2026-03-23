@@ -96,5 +96,10 @@
   "bm-close-btn": "bm-2n",
   "bm-wrong-pixels-overlay": "bm-1G",
   "bm-button-wrong-pixels": "bm-1L",
-  "bm-display-color": "bm-2n"
+  "bm-display-color": "bm-2n",
+  "bm-button-template-placer": "bm-1J",
+  "bm-template-placer": "bm-2c",
+  "bm-placer-controls": "bm-2d",
+  "bm-placer-coords": "bm-2q",
+  "bm-button-upload-template": "bm-1L"
 }

@@ -230,23 +230,6 @@ div:has(> #bm-button-teleport) {
   gap: 1ch;
 }
 
-/* Old upload button styles - REMOVED - now handled by grid layout below */
-
-/* Force complete invisibility of file input to prevent native browser text */
-#bm-input-file-template,
-input[type="file"][id*="template"] {
-  display: none !important;
-  visibility: hidden !important;
-  position: absolute !important;
-  left: -9999px !important;
-  top: -9999px !important;
-  width: 0 !important;
-  height: 0 !important;
-  opacity: 0 !important;
-  z-index: -9999 !important;
-  pointer-events: none !important;
-}
-
 /* Output status area */
 #bm-output-status {
   font-size: 0.85rem;
@@ -447,12 +430,7 @@ input[type="file"][id*="template"] {
   gap: .5rem;
 }
 
-#bm-coords-title {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: .5rem;
-}
+
 
 #bm-contain-coords #bm-contain-inputs {
   display: grid;
@@ -490,49 +468,35 @@ input[type="file"][id*="template"] {
   font-weight: 500;
 }
 
-/* Template buttons container - 3x4 grid layout */
+/* Template buttons container - grid layout */
 #bm-contain-buttons-template {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: auto auto auto auto; /* 4 rows: Upload Template, Create+Manage+Pause Tiles, Color Filter+Import */
-  align-items: stretch; /* all buttons same height in each row */
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  align-items: stretch;
   gap: .25rem;
 }
 
-/* Row 1: Upload Template (spans all 3 columns - full width) */
-div:has(> #bm-input-file-template) {
-  grid-column: 1 / span 3;
+/* Row 1: Upload Template (spans both columns - full width) */
+#bm-button-upload-template {
   grid-row: 1;
+  grid-column: 1 / span 2;
 }
 
-/* Row 3: Color Filter (spans all 3 columns - full width) */
+/* Row 2: Color Filter (spans both columns - full width) */
 #bm-button-color-filter {
-  grid-column: 1 / span 3;
+  grid-column: 1 / span 2;
 }
 
-div:has(> #bm-input-file-template) > button {
-  width: 100%;
-  height: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  box-sizing: border-box;
-}
-
-/* Delete button moved to help section - uses .bm-help styles */
-
-/* Clear Storage button uses the same bm-help class - SIMPLE! */
-
-/* Row 2: Create, Manage, Pause Tiles buttons */
-#bm-button-create  { grid-row: 2; grid-column: 1; }
-#bm-button-manage  { grid-row: 2; grid-column: 2; }
+/* Row 2: Manage + Pause Tiles buttons (50% each) */
+#bm-button-manage  { grid-row: 2; grid-column: 1; }
 #bm-button-pause-tiles {
   grid-row: 2;
-  grid-column: 3;
+  grid-column: 2;
   background-color: #50a9f1 !important;
   transition: all 0.3s ease !important;
-  font-size: 0.85rem; /* Slightly smaller text for better fit */
-  padding: .125rem .25rem; /* Reduced horizontal padding */
+  font-size: 0.85rem;
+  padding: .125rem .25rem;
 }
 
 /* Row 3: Color Filter button spans all 3 columns (defined above) */

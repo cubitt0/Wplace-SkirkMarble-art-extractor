@@ -75,15 +75,42 @@ export default class Overlay {
 
     // For every passed in property (shared by all like-elements), apply the it to the element
     for (const [property, value] of Object.entries(properties)) {
-      element[property] = value;
+      this.#applyAttribute(element, property, value);
     }
 
     // For every passed in additional property, apply the it to the element
     for (const [property, value] of Object.entries(additionalProperties)) {
-      element[property] = value;
+      this.#applyAttribute(element, property, value);
     }
     
     return element;
+  }
+
+  #applyAttribute(element, property, value) {
+    if (property == 'class') {
+      element.classList.add(...value.split(/\s+/)); // converts 'foo bar' to 'foo', 'bar'
+    } else if (property == 'for') {
+      element.htmlFor = value;
+    } else if (property == 'tabindex') {
+      element.tabIndex = Number(value);
+    } else if (property == 'readonly') {
+      element.readOnly = ((value == 'true') || (value == '1'));
+    } else if (property == 'maxlength') {
+      element.maxLength = Number(value);
+    } else if (property.startsWith('data')) {
+      element.dataset[
+        property.slice(5).split('-').map(
+          (part, i) => (i == 0) ? part : part[0].toUpperCase() + part.slice(1)
+        ).join('')
+      ] = value;
+    } else if (property.startsWith('aria')) {
+      const camelCase = property.slice(5).split('-').map(
+        (part, i) => (i == 0) ? part : part[0].toUpperCase() + part.slice(1)
+      ).join('');
+      element['aria' + camelCase[0].toUpperCase() + camelCase.slice(1)] = value;
+    } else {
+      element[property] = value;
+    }
   }
 
   /** Finishes building an element.

@@ -186,6 +186,7 @@ export function canvasPosToLatLng(coordinates) {
  */
 export const colorpalette = [
   {
+    "id": 0,
     "name": "Transparent",
     // Keep rgb as [0,0,0] for palette index consistency but mark as transparent
     "rgb": [0, 0, 0],
@@ -193,384 +194,495 @@ export const colorpalette = [
     "isAvailable": null
   },
   {
+    "id": 1,
     "name": "Black",
     "rgb": [0, 0, 0],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 2,
     "name": "Dark Gray",
     "rgb": [60, 60, 60],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 3,
     "name": "Gray",
     "rgb": [120, 120, 120],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 4,
     "name": "Light Gray",
     "rgb": [210, 210, 210],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 5,
     "name": "White",
     "rgb": [255, 255, 255],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 6,
     "name": "Deep Red",
     "rgb": [96, 0, 24],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 7,
     "name": "Red",
     "rgb": [237, 28, 36],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 8,
     "name": "Orange",
     "rgb": [255, 127, 39],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 9,
     "name": "Gold",
     "rgb": [246, 170, 9],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 10,
     "name": "Yellow",
     "rgb": [249, 221, 59],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 11,
     "name": "Light Yellow",
     "rgb": [255, 250, 188],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 12,
     "name": "Dark Green",
     "rgb": [14, 185, 104],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 13,
     "name": "Green",
     "rgb": [19, 230, 123],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 14,
     "name": "Light Green",
     "rgb": [135, 255, 94],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 15,
     "name": "Dark Teal",
     "rgb": [12, 129, 110],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 16,
     "name": "Teal",
     "rgb": [16, 174, 166],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 17,
     "name": "Light Teal",
     "rgb": [19, 225, 190],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 18,
     "name": "Dark Blue",
     "rgb": [40, 80, 158],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 19,
     "name": "Blue",
     "rgb": [64, 147, 228],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 20,
     "name": "Cyan",
     "rgb": [96, 247, 242],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 21,
     "name": "Indigo",
     "rgb": [107, 80, 246],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 22,
     "name": "Light Indigo",
     "rgb": [153, 177, 251],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 23,
     "name": "Dark Purple",
     "rgb": [120, 12, 153],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 24,
     "name": "Purple",
     "rgb": [170, 56, 185],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 25,
     "name": "Light Purple",
     "rgb": [224, 159, 249],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 26,
     "name": "Dark Pink",
     "rgb": [203, 0, 122],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 27,
     "name": "Pink",
     "rgb": [236, 31, 128],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 28,
     "name": "Light Pink",
     "rgb": [243, 141, 169],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 29,
     "name": "Dark Brown",
     "rgb": [104, 70, 52],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 30,
     "name": "Brown",
     "rgb": [149, 104, 42],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 31,
     "name": "Beige",
     "rgb": [248, 178, 119],
     "free": true,
     "isAvailable": null
   },
   {
+    "id": 32,
     "name": "Medium Gray",
     "rgb": [170, 170, 170],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 33,
     "name": "Dark Red",
     "rgb": [165, 14, 30],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 34,
     "name": "Light Red",
     "rgb": [250, 128, 114],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 35,
     "name": "Dark Orange",
     "rgb": [228, 92, 26],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 36,
     "name": "Light Tan",
     "rgb": [214, 181, 148],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 37,
     "name": "Dark Goldenrod",
     "rgb": [156, 132, 49],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 38,
     "name": "Goldenrod",
     "rgb": [197, 173, 49],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 39,
     "name": "Light Goldenrod",
     "rgb": [232, 212, 95],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 40,
     "name": "Dark Olive",
     "rgb": [74, 107, 58],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 41,
     "name": "Olive",
     "rgb": [90, 148, 74],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 42,
     "name": "Light Olive",
     "rgb": [132, 197, 115],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 43,
     "name": "Dark Cyan",
     "rgb": [15, 121, 159],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 44,
     "name": "Light Cyan",
     "rgb": [187, 250, 242],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 45,
     "name": "Light Blue",
     "rgb": [125, 199, 255],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 46,
     "name": "Dark Indigo",
     "rgb": [77, 49, 184],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 47,
     "name": "Dark Slate Blue",
     "rgb": [74, 66, 132],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 48,
     "name": "Slate Blue",
     "rgb": [122, 113, 196],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 49,
     "name": "Light Slate Blue",
     "rgb": [181, 174, 241],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 50,
     "name": "Light Brown",
     "rgb": [219, 164, 99],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 51,
     "name": "Dark Beige",
     "rgb": [209, 128, 81],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 52,
     "name": "Light Beige",
     "rgb": [255, 197, 165],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 53,
     "name": "Dark Peach",
     "rgb": [155, 82, 73],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 54,
     "name": "Peach",
     "rgb": [209, 128, 120],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 55,
     "name": "Light Peach",
     "rgb": [250, 182, 164],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 56,
     "name": "Dark Tan",
     "rgb": [123, 99, 82],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 57,
     "name": "Tan",
     "rgb": [156, 132, 107],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 58,
     "name": "Dark Slate",
     "rgb": [51, 57, 65],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 59,
     "name": "Slate",
     "rgb": [109, 117, 141],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 60,
     "name": "Light Slate",
     "rgb": [179, 185, 209],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 61,
     "name": "Dark Stone",
     "rgb": [109, 100, 63],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 62,
     "name": "Stone",
     "rgb": [148, 140, 107],
     "free": false,
     "isAvailable": null
   },
   {
+    "id": 63,
     "name": "Light Stone",
     "rgb": [205, 197, 158],
     "free": false,
     "isAvailable": null
   }
 ];
+
+export function colorpaletteForBlueMarble(tolerance = 0) {
+
+  const colorpaletteBM = [...colorpalette]; // Makes a copy
+
+  // Adds the Blue Marble color for "erased" and "other" pixels to the palette list
+  colorpaletteBM.unshift({ "id": -1, "free": true, "isAvailable": null, "name": "Erased", "rgb": [222, 250, 206] });
+  colorpaletteBM.unshift({ "id": -2, "free": true, "isAvailable": null, "name": "Other",  "rgb": [  0,   0,   0] });
+
+  const lookupTable = new Map();
+
+  // For each color in Blue Marble's palette...
+  for (const color of colorpaletteBM) {
+    if ((color.id == 0) || (color.id == -2)) continue; // skip Transparent or Other colors
+
+    // Target RGB values. These are exactly correct.
+    const targetRed = color.rgb[0];
+    const targetGreen = color.rgb[1];
+    const targetBlue = color.rgb[2];
+
+    // For each RGB value in the range of RGB values centered on the target RGB value for each channel...
+    for (let deltaRedRange = -tolerance; deltaRedRange <= tolerance; deltaRedRange++) {
+      for (let deltaGreenRange = -tolerance; deltaGreenRange <= tolerance; deltaGreenRange++) {
+        for (let deltaBlueRange = -tolerance; deltaBlueRange <= tolerance; deltaBlueRange++) {
+          // We are making a "cube" around each target value.
+          // Say the tolerance is 3. The size of the cube will be ((3*2)+1)^3 = 343 total.
+          // This means 343 colors will be Mapped as associated to the target color ID
+
+          const derivativeRed = targetRed + deltaRedRange;
+          const derivativeGreen = targetGreen + deltaGreenRange;
+          const derivativeBlue = targetBlue + deltaBlueRange;
+
+          // If it is impossible for the color to exist, then skip
+          if (derivativeRed < 0 || derivativeRed > 255 || derivativeGreen < 0 || derivativeGreen > 255 || derivativeBlue < 0 || derivativeBlue > 255) continue;
+
+          // Packed into 32-bit integer like RGBA = 0xAABBGGRR with the alpha channel forced to be 255
+          // Forced to be an unsigned 32-bit integer
+          const derivativeColor32 = ((255 << 24) | (derivativeBlue << 16) | (derivativeGreen << 8) | derivativeRed) >>> 0;
+          if (!lookupTable.has(derivativeColor32)) {
+            lookupTable.set(derivativeColor32, color.id);
+          }
+        }
+      }
+    }
+  }
+
+  return { palette: colorpaletteBM, LUT: lookupTable };
+}
 
 /**
  * Loads color availability data from storage and applies it to colorpalette
