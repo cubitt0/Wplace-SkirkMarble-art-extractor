@@ -3042,16 +3042,6 @@ function showWrongPixelsDialog(instance) {
         const pY = wrongPixel.pixelY;
         const coordinates = [wrongPixel.tileX, wrongPixel.tileY, pX, pY];
         
-        const coordTxInput = document.querySelector('#bm-input-tx');
-        const coordTyInput = document.querySelector('#bm-input-ty');
-        const coordPxInput = document.querySelector('#bm-input-px');
-        const coordPyInput = document.querySelector('#bm-input-py');
-        
-        if (coordTxInput) coordTxInput.value = wrongPixel.tileX;
-        if (coordTyInput) coordTyInput.value = wrongPixel.tileY;
-        if (coordPxInput) coordPxInput.value = pX;
-        if (coordPyInput) coordPyInput.value = pY;
-        
         const latLng = canvasPosToLatLng(coordinates);
         
         if (latLng) {
@@ -3722,17 +3712,6 @@ function showTemplateManageDialog(instance) {
           const [tileX, tileY, pX, pY] = coords.map(coord => parseInt(coord.trim(), 10));
           const coordinates = [tileX, tileY, pX, pY];
           
-          // Auto-fill coordinate inputs with template coordinates
-          const coordTxInput = document.querySelector('#bm-input-tx');
-          const coordTyInput = document.querySelector('#bm-input-ty');
-          const coordPxInput = document.querySelector('#bm-input-px');
-          const coordPyInput = document.querySelector('#bm-input-py');
-          
-          if (coordTxInput) coordTxInput.value = tileX;
-          if (coordTyInput) coordTyInput.value = tileY;
-          if (coordPxInput) coordPxInput.value = pX;
-          if (coordPyInput) coordPyInput.value = pY;
-          
           // Convert to lat/lng
           const latLng = canvasPosToLatLng(coordinates);
           
@@ -3944,11 +3923,9 @@ function buildOverlayMain() {
             const overlay = document.querySelector('#bm-overlay');
             const header = document.querySelector('#bm-contain-header');
             const dragBar = document.querySelector('#bm-bar-drag');
-            const coordsContainer = document.querySelector('#bm-contain-coords');
             const uploadButton = document.querySelector('#bm-button-upload-template');
             const manageButton = document.querySelector('#bm-button-manage');
             const pauseButton = document.querySelector('#bm-button-pause-tiles');
-            const coordInputs = document.querySelectorAll('#bm-contain-coords input');
             const colorFilterButton = document.getElementById('bm-button-color-filter');
             
             // Pre-restore original dimensions when switching to maximized state
@@ -3967,7 +3944,7 @@ function buildOverlayMain() {
                 '#bm-overlay h1',                    // Main title "Blue Marble"
                 '#bm-contain-userinfo',              // User information section (username, droplets, level)
                 '#bm-overlay #bm-separator',         // Visual separator lines
-                '#bm-contain-automation > *:not(#bm-contain-coords)', // Automation section excluding coordinates
+                '#bm-contain-automation', // Automation section
                 '#bm-contain-buttons-action',        // Action buttons container
                 `#${instance.outputStatusId}`        // Status log textarea for user feedback
               ];
@@ -3984,11 +3961,6 @@ function buildOverlayMain() {
               // ==================== MINIMIZED STATE CONFIGURATION ====================
               // In minimized state, we hide ALL interactive elements except the icon and drag bar
               // This creates a clean, unobtrusive interface that maintains only essential functionality
-              
-              // Hide coordinate input container completely
-              if (coordsContainer) {
-                coordsContainer.style.display = 'none';
-              }
               
               // Hide create template button
               if (uploadButton) {
@@ -4067,11 +4039,6 @@ function buildOverlayMain() {
                 }
               }
               
-              // Hide all coordinate input fields individually (failsafe)
-              coordInputs.forEach(input => {
-                input.style.display = 'none';
-              });
-              
               // Apply fixed dimensions for consistent minimized appearance
               // These dimensions were chosen to accommodate the icon while remaining compact
               // Increase width to accommodate compact Color Filter button (56px) + padding
@@ -4098,17 +4065,6 @@ function buildOverlayMain() {
               // ==================== MAXIMIZED STATE RESTORATION ====================
               // In maximized state, we restore all elements to their default functionality
               // This involves clearing all style overrides applied during minimization
-              
-              // Restore coordinate container to default state
-              if (coordsContainer) {
-                coordsContainer.style.display = '';           // Show container
-                coordsContainer.style.flexDirection = '';     // Reset flex layout
-                coordsContainer.style.justifyContent = '';    // Reset alignment
-                coordsContainer.style.alignItems = '';        // Reset alignment
-                coordsContainer.style.gap = '';               // Reset spacing
-                coordsContainer.style.textAlign = '';         // Reset text alignment
-                coordsContainer.style.margin = '';            // Reset margins
-              }
               
               // Restore upload button visibility and reset positioning
               if (uploadButton) {
@@ -4166,11 +4122,6 @@ function buildOverlayMain() {
                   btnContainer.style.gridTemplateColumns = '';
                 }
               }
-              
-              // Restore all coordinate input fields
-              coordInputs.forEach(input => {
-                input.style.display = '';
-              });
               
               // Reset icon positioning to default (remove minimized state offset)
               img.style.margin = '';
@@ -4276,16 +4227,6 @@ function buildOverlayMain() {
       // .addCheckbox({'id': 'bm-input-possessed', 'textContent': 'Possessed', 'checked': true}).buildElement()
       // .addButtonHelp({'title': 'Controls the website as if it were possessed.'}).buildElement()
       // .addBr().buildElement()
-      .addDiv({'id': 'bm-contain-coords'})
-        .addDiv({ id: 'bm-contain-inputs'})
-          .addP({ textContent: 'Tile: '}).buildElement()
-          .addInput({'type': 'number', 'id': 'bm-input-tx', 'placeholder': 'T1 X', 'min': 0, 'max': 2047, 'step': 1, 'required': true}).buildElement()
-          .addInput({'type': 'number', 'id': 'bm-input-ty', 'placeholder': 'T1 Y', 'min': 0, 'max': 2047, 'step': 1, 'required': true}).buildElement()
-          .addInput({'type': 'number', 'id': 'bm-input-px', 'placeholder': 'Px X', 'min': 0, 'max': 2047, 'step': 1, 'required': true}).buildElement()
-          .addInput({'type': 'number', 'id': 'bm-input-py', 'placeholder': 'Px Y', 'min': 0, 'max': 2047, 'step': 1, 'required': true}).buildElement()
-        .buildElement()
-      .buildElement()
-      
       // Color Menu
       .addDiv({ 
         id: 'bm-color-menu',
@@ -4403,40 +4344,6 @@ function buildOverlayMain() {
               if (searchPanel) {
                 searchPanel.style.display = searchPanel.style.display === 'none' || !searchPanel.style.display ? 'flex' : 'none';
               }
-            });
-          }).buildElement()
-          .addButton({'id': 'bm-button-flyto', 'className': 'bm-help', 'innerHTML': '🗺️', 'title': 'Fly to current coordinates'}, 
-            (instance, button) => {
-            button.addEventListener('click', () => {
-              function coordsToLatLng(tileX, tileY, pixelX, pixelY){
-                const z = 40075.016685578485 / 2 ** 11
-                const ys = 20037508.342789244
-                let metersX = (tileX * 1000 + pixelX) * z - ys
-                let metersY = (ys - (tileY * 1000 + pixelY) * z) / ys * 180
-
-                let lat = 180 / Math.PI * (2 * Math.atan(Math.exp(metersY * Math.PI / 180)) - Math.PI / 2)
-                let lng = metersX / ys * 180
-                return [lat, lng]
-              }
-              
-              const coordTlX = Number(document.querySelector('#bm-input-tx').value);
-              const coordTlY = Number(document.querySelector('#bm-input-ty').value);
-              const coordPxX = Number(document.querySelector('#bm-input-px').value);
-              const coordPxY = Number(document.querySelector('#bm-input-py').value);
-
-              const [lat, lng] = coordsToLatLng(coordTlX, coordTlY, coordPxX, coordPxY);
-              
-              // Use navigation method setting
-              const navigationMethod = Settings.getNavigationMethod();
-              
-              if (navigationMethod === 'openurl') {
-                const zoom = 13.62;
-                const url = `https://wplace.live/?lat=${lat}&lng=${lng}&zoom=${zoom}`;
-                window.location.href = url;
-              } else {
-                flyToLatLng(lat, lng);
-              }
-              
             });
           }).buildElement()
           .addButton({'id': 'bm-button-screenshot', 'className': 'bm-help', 'innerHTML': '📸', 'title': 'Screenshot current template area (auto-detects coordinates)'},
@@ -11327,17 +11234,6 @@ function startTemplatePlacerFlow(overlayInstance, templateManager) {
       onConfirm: async (result) => {
         console.log('[TemplatePlacer] onConfirm received:', result);
         try {
-          // Fill coordinate inputs with the confirmed position
-          const txInput = document.getElementById('bm-input-tx');
-          const tyInput = document.getElementById('bm-input-ty');
-          const pxInput = document.getElementById('bm-input-px');
-          const pyInput = document.getElementById('bm-input-py');
-
-          if (txInput) txInput.value = result.tileX;
-          if (tyInput) tyInput.value = result.tileY;
-          if (pxInput) pxInput.value = result.pixelX;
-          if (pyInput) pyInput.value = result.pixelY;
-
           console.log('[TemplatePlacer] Calling createTemplate...');
           // Create the template with the chosen coordinates
           await templateManager.createTemplate(

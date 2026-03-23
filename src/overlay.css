@@ -201,24 +201,6 @@ div:has(> #bm-button-teleport) {
   vertical-align: bottom;
 }
 
-/* Tile (x, y) & Pixel (x, y) input fields */
-#bm-contain-coords input[type="number"] {
-  appearance: auto;
-  -moz-appearance: textfield;
-  width: 3.2ch;
-  margin-left: 0.3ch;
-  background-color: rgba(0, 0, 0, 0.2);
-  padding: 0 0.2ch;
-  font-size: small;
-}
-
-/* Removes scroll bar on tile & pixel input fields */
-#bm-contain-coords input[type="number"]::-webkit-outer-spin-button,
-#bm-contain-coords input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
 /* Automation button container */
 #bm-contain-buttons-template {
   display: flex;
@@ -261,7 +243,6 @@ div:has(> #bm-button-teleport) {
 /* The elements that need spacing from each-other */
 #bm-contain-userinfo,
 #bm-contain-automation,
-#bm-contain-coords,
 #bm-contain-buttons-template,
 #bm-output-status {
   margin-top: 0.5em;
@@ -331,16 +312,6 @@ div:has(> #bm-button-teleport) {
 
 #bm-color-filter-overlay::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.5);
-}
-
-/* CRITICAL: Remove red borders from HTML5 validation on coordinate inputs */
-#bm-input-tx:invalid,
-#bm-input-ty:invalid, 
-#bm-input-px:invalid,
-#bm-input-py:invalid {
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
 }
 
 /* Mini progress tracker styles - Slate theme */
@@ -421,51 +392,6 @@ div:has(> #bm-button-teleport) {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-}
-
-/* Coordinates container */
-#bm-contain-coords {
-  display: flex;
-  flex-direction: column;
-  gap: .5rem;
-}
-
-
-
-#bm-contain-coords #bm-contain-inputs {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  align-items: center;
-  gap: .5rem;
-}
-
-#bm-contain-coords #bm-contain-inputs p {
-  display: none; /* Hide the "Tile:" and "Pixel:" labels */
-}
-
-/* Tile (x, y) & Pixel (x, y) input fields */
-#bm-contain-coords #bm-contain-inputs input {
-  width: 100%;
-  height: 2.2rem;
-  background: #1e293b;
-  border: 1px solid #475569;
-  color: #f1f5f9;
-  padding: 0 0.5rem;
-  font-size: 0.9rem;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-#bm-contain-coords #bm-contain-inputs input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-  outline: none;
-}
-
-#bm-contain-coords #bm-contain-inputs input::placeholder {
-  color: #94a3b8;
-  font-weight: 500;
 }
 
 /* Template buttons container - grid layout */
