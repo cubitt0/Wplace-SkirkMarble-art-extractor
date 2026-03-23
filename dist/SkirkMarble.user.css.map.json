@@ -101,5 +101,8 @@
   "bm-template-placer": "bm-2c",
   "bm-placer-controls": "bm-2d",
   "bm-placer-coords": "bm-2q",
-  "bm-button-upload-template": "bm-1L"
+  "bm-button-upload-template": "bm-1L",
+  "bm-user-mapready-content": "bm-1S",
+  "bm-user-mapready-icon": "bm-29",
+  "bm-user-mapready": "bm-2x"
 }

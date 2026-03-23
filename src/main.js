@@ -1444,11 +1444,39 @@ if (!document.getElementById('bm-fullcharge-styles')) {
       margin: 0;
       flex: 1;
     }
+    #bm-user-mapready {
+      display: flex;
+      align-items: center;
+    }
+    #bm-user-mapready-icon {
+      margin-right: 0px;
+    }
+    #bm-user-mapready-content {
+      margin: 0;
+      flex: 1;
+    }
   `;
   document.head.appendChild(style);
 }
 
 debugLog(`%c${name}%c (${version}) userscript has loaded!`, 'color: cornflowerblue;', '');
+
+// Poll for bmmap readiness and update the Map Ready indicator
+(function pollMapReady() {
+  const el = document.getElementById('bm-user-mapready-content');
+  if (!el) return;
+  const check = () => {
+    try {
+      if (unsafeWindow.bmmap && unsafeWindow.bmmap.flyTo) {
+        el.innerHTML = '<b>Map:</b> <span style="color:#4ade80">Ready ✓</span>';
+        return;
+      }
+    } catch (e) { /* ignore */ }
+    el.innerHTML = '<b>Map:</b> <span style="color:#fbbf24">Click map to activate...</span>';
+    setTimeout(check, 1000);
+  };
+  check();
+})();
 
 /** Observe the black color, and add the "Move" button.
  * @since 0.66.3
@@ -4197,6 +4225,10 @@ function buildOverlayMain() {
       .addDiv({'id': 'bm-user-fullcharge'})
         .addDiv({'id': 'bm-user-fullcharge-icon', innerHTML: icons.chargeIcon}).buildElement()
         .addP({'id': 'bm-user-fullcharge-content', 'textContent': 'Full Charge in...'}).buildElement()
+      .buildElement()
+      .addDiv({'id': 'bm-user-mapready'})
+        .addDiv({'id': 'bm-user-mapready-icon', innerHTML: icons.mapReadyIcon}).buildElement()
+        .addP({'id': 'bm-user-mapready-content', 'textContent': 'Map: Waiting...'}).buildElement()
       .buildElement()
     .buildElement()
     
@@ -13060,6 +13092,7 @@ function buildCrosshairSettingsOverlay() {
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowDroplets', 'Droplets', 'bm-user-droplets'));
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowNextLevel', 'Next Level', 'bm-user-nextlevel'));
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowFullCharge', 'Full Charge', 'bm-user-fullcharge'));
+  checkboxContainer.appendChild(createVisibilityCheckbox('bmShowMapReady', 'Map Ready', 'bm-user-mapready'));
   checkboxContainer.appendChild(createVisibilityCheckbox('bmShowColorMenu', 'Color Menu (Beta Test)', 'bm-color-menu'));
   
 
