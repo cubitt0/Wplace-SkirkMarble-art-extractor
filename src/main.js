@@ -8415,6 +8415,10 @@ function invalidateTemplateCache() {
 /** State for Space+Hover color picker */
 let isSpaceHoverActive = false;
 let lastPickedColorKey = null;
+let lastPickedTileX = -1;
+let lastPickedTileY = -1;
+let lastPickedPixelX = -1;
+let lastPickedPixelY = -1;
 
 /** Cached enabled state – avoids calling GM_getValue on every event */
 let _spaceHoverEnabledCache = null;
@@ -8496,6 +8500,10 @@ function initializeSpaceHoverColorPicker() {
       isSpaceHoverActive = false;
       document.body.style.cursor = '';
       lastPickedColorKey = null;
+      lastPickedTileX = -1;
+      lastPickedTileY = -1;
+      lastPickedPixelX = -1;
+      lastPickedPixelY = -1;
     }
   }, { capture: true });
   
@@ -8656,14 +8664,18 @@ function screenToTilePixelSync(screenX, screenY) {
     const latRad = lat * Math.PI / 180;
     const y = (Math.PI - Math.log(Math.tan(Math.PI / 4 + latRad / 2))) / (2 * Math.PI);
     
-    const actualX = Math.floor(x * mapSize);
-    const actualY = Math.floor(y * mapSize);
+    const continuousX = x * mapSize;
+    const continuousY = y * mapSize;
+    const actualX = Math.floor(continuousX);
+    const actualY = Math.floor(continuousY);
     
     return {
       tileX: Math.floor(actualX / 1000),
       tileY: Math.floor(actualY / 1000),
       pixelX: actualX % 1000,
-      pixelY: actualY % 1000
+      pixelY: actualY % 1000,
+      fracX: continuousX - actualX,
+      fracY: continuousY - actualY
     };
   } catch (error) {
     return null;
@@ -8691,6 +8703,20 @@ function pickColorAtScreen(screenX, screenY) {
     return; // Same color as last pick, skip redundant DOM work
   }
   
+  // Boundary hysteresis: when moving to a different pixel that would change
+  // the color, only accept if the cursor is well inside the new pixel.
+  // This prevents rapid color flipping at pixel boundaries.
+  const EDGE_PADDING = 0.2; // 20% dead zone from each edge
+  const samePixel = (coords.tileX === lastPickedTileX && coords.tileY === lastPickedTileY &&
+                     coords.pixelX === lastPickedPixelX && coords.pixelY === lastPickedPixelY);
+  if (!samePixel && lastPickedColorKey !== null) {
+    const { fracX, fracY } = coords;
+    if (fracX < EDGE_PADDING || fracX > (1 - EDGE_PADDING) ||
+        fracY < EDGE_PADDING || fracY > (1 - EDGE_PADDING)) {
+      return; // Too close to pixel edge, skip color switch
+    }
+  }
+  
   const colorId = RGB_TO_COLOR_ID[rgbKey];
   if (!colorId) {
     return;
@@ -8700,6 +8726,10 @@ function pickColorAtScreen(screenX, screenY) {
   if (colorButton && !colorButton.classList.contains('selected')) {
     colorButton.click();
     lastPickedColorKey = rgbKey;
+    lastPickedTileX = coords.tileX;
+    lastPickedTileY = coords.tileY;
+    lastPickedPixelX = coords.pixelX;
+    lastPickedPixelY = coords.pixelY;
   }
 }
 
