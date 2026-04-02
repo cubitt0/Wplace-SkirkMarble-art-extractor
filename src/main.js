@@ -8706,7 +8706,7 @@ function pickColorAtScreen(screenX, screenY) {
   // Boundary hysteresis: when moving to a different pixel that would change
   // the color, only accept if the cursor is well inside the new pixel.
   // This prevents rapid color flipping at pixel boundaries.
-  const EDGE_PADDING = 0.2; // 20% dead zone from each edge
+  const EDGE_PADDING = 0.15; // 15% dead zone from each edge
   const samePixel = (coords.tileX === lastPickedTileX && coords.tileY === lastPickedTileY &&
                      coords.pixelX === lastPickedPixelX && coords.pixelY === lastPickedPixelY);
   if (!samePixel && lastPickedColorKey !== null) {
