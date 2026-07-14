@@ -8717,7 +8717,9 @@ function pickColorAtScreen(screenX, screenY, settle = false) {
   // candidate pixel is directly adjacent to the last-picked one; larger jumps
   // are always accepted. The `settle` pass (fired after the mouse stops) skips
   // this entirely so a resting cursor always lands on the pixel underneath it.
-  const HYSTERESIS = 0.04; // 4% dead zone from each edge for adjacent pixels
+  const HYSTERESIS = 0.12; // 12% dead zone from each edge for adjacent pixels
+                           // (a resting cursor still settles via the debounce
+                           //  timer, so this only affects moving picks)
   const gx = coords.tileX * 1000 + coords.pixelX;
   const gy = coords.tileY * 1000 + coords.pixelY;
   const lgx = lastPickedTileX * 1000 + lastPickedPixelX;
