@@ -8514,8 +8514,13 @@ function initializeSpaceHoverColorPicker() {
   window.addEventListener('scroll', invalidateCanvasRect, { passive: true, capture: true });
   window.addEventListener('resize', invalidateCanvasRect, { passive: true });
   
-  // Handle mousemove for color picking
-  document.addEventListener('mousemove', handleSpaceHoverColorPick, { passive: true });
+  // Handle mousemove for color picking — CAPTURE phase so our colour switch
+  // runs BEFORE wplace's own move handler on the same event. wplace paints the
+  // pixel under the cursor on mousemove (while Space is held) using its selected
+  // colour; if we ran after it (bubble), every pixel would be painted with the
+  // PREVIOUS pixel's colour (a one-pixel lag). Running first sets the correct
+  // colour before wplace reads it.
+  document.addEventListener('mousemove', handleSpaceHoverColorPick, { capture: true });
 
   // Correctness net for click-to-place: at the very start of a place gesture,
   // re-pick the EXACT pixel under the cursor so its colour is selected even if a
@@ -8718,7 +8723,7 @@ function screenToTilePixelSync(screenX, screenY) {
  * @param {number} screenX
  * @param {number} screenY
  */
-function pickColorAtScreen(screenX, screenY) {
+function pickColorAtScreen(screenX, screenY, force = false) {
   const coords = screenToTilePixelSync(screenX, screenY);
   if (!coords) {
     return;
@@ -8730,8 +8735,10 @@ function pickColorAtScreen(screenX, screenY) {
   }
 
   const rgbKey = `${color.r},${color.g},${color.b}`;
-  if (rgbKey === lastPickedColorKey) {
-    return; // Same color as last pick, skip redundant DOM work
+  if (!force && rgbKey === lastPickedColorKey) {
+    return; // Same color as last pick, skip redundant DOM work (force=true at
+            // paint time re-verifies against the live DOM instead of trusting
+            // our cached last-pick, which may be stale after a manual change).
   }
 
   const colorId = RGB_TO_COLOR_ID[rgbKey];
