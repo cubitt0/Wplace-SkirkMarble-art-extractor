@@ -8419,9 +8419,6 @@ let lastPickedTileX = -1;
 let lastPickedTileY = -1;
 let lastPickedPixelX = -1;
 let lastPickedPixelY = -1;
-/** Timer that re-runs the pick shortly after the mouse stops moving, so a
- *  resting cursor always settles on the pixel directly underneath it. */
-let _pickSettleTimer = null;
 
 /** Cached enabled state – avoids calling GM_getValue on every event */
 let _spaceHoverEnabledCache = null;
@@ -8507,7 +8504,6 @@ function initializeSpaceHoverColorPicker() {
       lastPickedTileY = -1;
       lastPickedPixelX = -1;
       lastPickedPixelY = -1;
-      if (_pickSettleTimer) { clearTimeout(_pickSettleTimer); _pickSettleTimer = null; }
     }
   }, { capture: true });
 
@@ -8642,49 +8638,65 @@ function screenToTilePixelSync(screenX, screenY) {
     const canvasX = screenX - _cachedCanvasRect.left;
     const canvasY = screenY - _cachedCanvasRect.top;
 
-    // Only zoom/center come from the transform; the canvas dimensions come from
-    // the same DOM rect that produced canvasX/canvasY, so everything stays in
-    // one coordinate space (no hardcoded viewport-size fallbacks).
     const t = _cachedMap.transform;
-    const center = t.center;
     const zoom = t.zoom;
-
-    const centerLng = center['lng'];
-    const centerLat = center['lat'];
-
-    if (centerLng === undefined || centerLat === undefined || zoom === undefined) {
+    if (zoom === undefined) {
       return null;
     }
 
-    const worldSize = 512 * Math.pow(2, zoom);
-    const canvasCenterX = _cachedCanvasRect.width / 2;
-    const canvasCenterY = _cachedCanvasRect.height / 2;
-    const offsetX = canvasX - canvasCenterX;
-    const offsetY = canvasY - canvasCenterY;
+    const worldSize = 512 * Math.pow(2, zoom); // map size in screen px at this zoom
+    const mapSize = 2048000;                   // whole world in template pixels
 
-    // Project screen offset straight into normalized Web-Mercator space, then
-    // into map pixels — no lng/lat detour and no inverse Mercator (which would
-    // add transcendental round-off right at pixel boundaries).
-    const mapSize = 2048000;
-    const centerLatRad = centerLat * Math.PI / 180;
-    const mercYCenter = Math.log(Math.tan(Math.PI / 4 + centerLatRad / 2));
-    const newMercY = mercYCenter - offsetY * (2 * Math.PI / worldSize);
+    // Screen -> lng/lat. Prefer MapLibre's OWN unproject so our pixel grid lines
+    // up exactly with the pixel wplace paints on click — no drift between a
+    // hand-rolled inverse-Mercator and the one the map actually renders with.
+    // (Manual math kept only as a fallback if unproject is unavailable.)
+    let lng, lat;
+    try {
+      const ll = _cachedMap.unproject([canvasX, canvasY]);
+      lng = ll['lng'];
+      lat = ll['lat'];
+    } catch (e) { /* fall back to manual math below */ }
 
-    const xNorm = (centerLng + 180) / 360 + offsetX / worldSize;
-    const yNorm = 0.5 - newMercY / (2 * Math.PI);
+    if (lng === undefined || lat === undefined || Number.isNaN(lng) || Number.isNaN(lat)) {
+      const center = t.center;
+      const centerLng = center && center['lng'];
+      const centerLat = center && center['lat'];
+      if (centerLng === undefined || centerLat === undefined) {
+        return null;
+      }
+      const offsetX = canvasX - _cachedCanvasRect.width / 2;
+      const offsetY = canvasY - _cachedCanvasRect.height / 2;
+      const centerLatRad = centerLat * Math.PI / 180;
+      const mercYCenter = Math.log(Math.tan(Math.PI / 4 + centerLatRad / 2));
+      const newMercY = mercYCenter - offsetY * (2 * Math.PI / worldSize);
+      lng = centerLng + offsetX * 360 / worldSize;
+      lat = (2 * Math.atan(Math.exp(newMercY)) - Math.PI / 2) * 180 / Math.PI;
+    }
+
+    // lng/lat -> wplace's template-pixel grid (same formula the site tiles with).
+    const xNorm = (lng + 180) / 360;
+    const latRad = lat * Math.PI / 180;
+    const yNorm = (Math.PI - Math.log(Math.tan(Math.PI / 4 + latRad / 2))) / (2 * Math.PI);
 
     const continuousX = xNorm * mapSize;
     const continuousY = yNorm * mapSize;
     const actualX = Math.floor(continuousX);
     const actualY = Math.floor(continuousY);
-    
+
+    // Screen pixels covered by one template pixel — lets the caller apply a
+    // zoom-independent (screen-space) boundary margin instead of a fixed
+    // pixel-fraction that collapses below mouse jitter when zoomed out.
+    const screenPxPerPixel = worldSize / mapSize;
+
     return {
       tileX: Math.floor(actualX / 1000),
       tileY: Math.floor(actualY / 1000),
       pixelX: actualX % 1000,
       pixelY: actualY % 1000,
       fracX: continuousX - actualX,
-      fracY: continuousY - actualY
+      fracY: continuousY - actualY,
+      screenPxPerPixel
     };
   } catch (error) {
     return null;
@@ -8696,7 +8708,7 @@ function screenToTilePixelSync(screenX, screenY) {
  * @param {number} screenX
  * @param {number} screenY
  */
-function pickColorAtScreen(screenX, screenY, settle = false) {
+function pickColorAtScreen(screenX, screenY) {
   const coords = screenToTilePixelSync(screenX, screenY);
   if (!coords) {
     return;
@@ -8712,24 +8724,25 @@ function pickColorAtScreen(screenX, screenY, settle = false) {
     return; // Same color as last pick, skip redundant DOM work
   }
 
-  // Boundary hysteresis: guard against flip-flop between two neighbouring
-  // pixels, NOT against normal movement. Only apply a small dead zone when the
-  // candidate pixel is directly adjacent to the last-picked one; larger jumps
-  // are always accepted. The `settle` pass (fired after the mouse stops) skips
-  // this entirely so a resting cursor always lands on the pixel underneath it.
-  const HYSTERESIS = 0.12; // 12% dead zone from each edge for adjacent pixels
-                           // (a resting cursor still settles via the debounce
-                           //  timer, so this only affects moving picks)
+  // Boundary margin: when switching to a directly-adjacent pixel, require the
+  // cursor to be a few SCREEN pixels past the shared edge before committing.
+  // A screen-space margin (unlike a fixed pixel-fraction) stays effective at
+  // every zoom — when a template pixel is only ~1 screen px wide, a fraction is
+  // below mouse jitter and does nothing. Larger jumps are always accepted.
   const gx = coords.tileX * 1000 + coords.pixelX;
   const gy = coords.tileY * 1000 + coords.pixelY;
   const lgx = lastPickedTileX * 1000 + lastPickedPixelX;
   const lgy = lastPickedTileY * 1000 + lastPickedPixelY;
   const adjacent = Math.abs(gx - lgx) <= 1 && Math.abs(gy - lgy) <= 1 && !(gx === lgx && gy === lgy);
-  if (!settle && adjacent && lastPickedColorKey !== null) {
+  if (adjacent && lastPickedColorKey !== null) {
+    const MARGIN_PX = 3; // screen px the cursor must be inside the new pixel
+    const pxPer = coords.screenPxPerPixel || 1;
+    // Cap the margin so the centre is always reachable even for tiny pixels.
+    const margin = Math.min(MARGIN_PX / pxPer, 0.4);
     const { fracX, fracY } = coords;
-    if (fracX < HYSTERESIS || fracX > (1 - HYSTERESIS) ||
-        fracY < HYSTERESIS || fracY > (1 - HYSTERESIS)) {
-      return; // Too close to the shared edge, wait until well inside new pixel
+    if (fracX < margin || fracX > (1 - margin) ||
+        fracY < margin || fracY > (1 - margin)) {
+      return; // Not far enough past the shared edge yet — hold previous color
     }
   }
 
@@ -8757,17 +8770,6 @@ function handleSpaceHoverColorPick(event) {
   }
 
   pickColorAtScreen(event.clientX, event.clientY);
-
-  // Re-run shortly after the mouse stops. Movement keeps clearing this timer,
-  // so it only fires once the cursor is at rest — then it picks with hysteresis
-  // bypassed so a resting cursor always settles on the pixel underneath it.
-  if (_pickSettleTimer) { clearTimeout(_pickSettleTimer); }
-  _pickSettleTimer = setTimeout(() => {
-    _pickSettleTimer = null;
-    if (isSpaceHoverActive) {
-      pickColorAtScreen(_lastMouseX, _lastMouseY, true);
-    }
-  }, 60);
 }
 
 // ====== ERROR MAP MODE (LURK INTEGRATION) ======
