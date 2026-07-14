@@ -8516,7 +8516,17 @@ function initializeSpaceHoverColorPicker() {
   
   // Handle mousemove for color picking
   document.addEventListener('mousemove', handleSpaceHoverColorPick, { passive: true });
-  
+
+  // Correctness net for click-to-place: at the very start of a place gesture,
+  // re-pick the EXACT pixel under the cursor so its colour is selected even if a
+  // fast hover sample skipped that pixel. Capture phase runs before wplace's own
+  // handler; wplace commits the pixel on release, which leaves the async colour
+  // selection time to settle before it's read.
+  document.addEventListener('pointerdown', (event) => {
+    if (!isSpaceHoverActive) { return; }
+    pickColorAtScreen(event.clientX, event.clientY);
+  }, { capture: true });
+
   debugLog('🎨 [Space+Hover] Color picker initialized successfully');
 }
 
@@ -8724,36 +8734,26 @@ function pickColorAtScreen(screenX, screenY) {
     return; // Same color as last pick, skip redundant DOM work
   }
 
-  // Boundary margin: when switching to a directly-adjacent pixel, require the
-  // cursor to be a few SCREEN pixels past the shared edge before committing.
-  // A screen-space margin (unlike a fixed pixel-fraction) stays effective at
-  // every zoom — when a template pixel is only ~1 screen px wide, a fraction is
-  // below mouse jitter and does nothing. Larger jumps are always accepted.
-  const gx = coords.tileX * 1000 + coords.pixelX;
-  const gy = coords.tileY * 1000 + coords.pixelY;
-  const lgx = lastPickedTileX * 1000 + lastPickedPixelX;
-  const lgy = lastPickedTileY * 1000 + lastPickedPixelY;
-  const adjacent = Math.abs(gx - lgx) <= 1 && Math.abs(gy - lgy) <= 1 && !(gx === lgx && gy === lgy);
-  if (adjacent && lastPickedColorKey !== null) {
-    const MARGIN_PX = 3; // screen px the cursor must be inside the new pixel
-    const pxPer = coords.screenPxPerPixel || 1;
-    // Cap the margin so the centre is always reachable even for tiny pixels.
-    const margin = Math.min(MARGIN_PX / pxPer, 0.4);
-    const { fracX, fracY } = coords;
-    if (fracX < margin || fracX > (1 - margin) ||
-        fracY < margin || fracY > (1 - margin)) {
-      return; // Not far enough past the shared edge yet — hold previous color
-    }
-  }
-
   const colorId = RGB_TO_COLOR_ID[rgbKey];
   if (!colorId) {
     return;
   }
-  
+
+  // No boundary hysteresis. This is a click-to-place workflow: the selected
+  // colour must match the pixel under the cursor exactly and immediately, so we
+  // switch on the first sample inside a new pixel. Any hold-back means a quick
+  // place-click lands the PREVIOUS pixel's colour. wplace applies the selection
+  // asynchronously (React, ~1 frame), so firing ASAP gives it time to settle
+  // before the click; pointerdown also force-re-picks (see the capture listener
+  // in initializeSpaceHoverColorPicker) as a safety net at placement time.
   const colorButton = document.querySelector(`button#${CSS.escape(colorId)}`);
-  if (colorButton && !colorButton.classList.contains('selected')) {
-    colorButton.click();
+  if (colorButton) {
+    // 'ring-primary' is wplace's current "selected swatch" marker. Skip the
+    // click only when this colour is already active; if that class ever changes
+    // we simply click again, which is harmless.
+    if (!colorButton.classList.contains('ring-primary')) {
+      colorButton.click();
+    }
     lastPickedColorKey = rgbKey;
     lastPickedTileX = coords.tileX;
     lastPickedTileY = coords.tileY;
