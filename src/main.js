@@ -8748,13 +8748,17 @@ function pickColorAtScreen(screenX, screenY, force = false) {
   // Boundary hysteresis: when moving to a different pixel that would change the
   // colour, only accept once the cursor is well inside the new pixel. Prevents
   // rapid colour flip-flop when the cursor lingers or jitters on a pixel border.
-  const EDGE_PADDING = 0.15; // 15% dead zone from each edge
+  // The user only sweeps horizontally, so the left/right (X) dead zone does the
+  // real work; the top/bottom (Y) zone is kept tiny so riding near a row's edge
+  // never blocks a horizontal colour switch.
+  const EDGE_PADDING_X = 0.15; // 15% dead zone on left/right edges
+  const EDGE_PADDING_Y = 0.05; // 5% dead zone on top/bottom edges
   const samePixel = (coords.tileX === lastPickedTileX && coords.tileY === lastPickedTileY &&
                      coords.pixelX === lastPickedPixelX && coords.pixelY === lastPickedPixelY);
   if (!force && !samePixel && lastPickedColorKey !== null) {
     const { fracX, fracY } = coords;
-    if (fracX < EDGE_PADDING || fracX > (1 - EDGE_PADDING) ||
-        fracY < EDGE_PADDING || fracY > (1 - EDGE_PADDING)) {
+    if (fracX < EDGE_PADDING_X || fracX > (1 - EDGE_PADDING_X) ||
+        fracY < EDGE_PADDING_Y || fracY > (1 - EDGE_PADDING_Y)) {
       return; // Too close to pixel edge, skip colour switch
     }
   }
