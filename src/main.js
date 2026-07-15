@@ -8420,16 +8420,6 @@ let lastPickedTileY = -1;
 let lastPickedPixelX = -1;
 let lastPickedPixelY = -1;
 
-/** Smoothed screen-space mouse velocity, used to LEAD the colour selection in
- *  the direction of travel (compensates for wplace applying the palette colour
- *  asynchronously — see pickColorAtScreen). Zero at rest. */
-let _velX = 0;
-let _velY = 0;
-let _prevScreenX = null;
-let _prevScreenY = null;
-const PAINT_LEAD_PX = 1;      // pixels to lead ahead in the movement direction
-const PAINT_LEAD_SPEED = 1.5; // min smoothed screen px/event before leading
-
 /** Cached enabled state – avoids calling GM_getValue on every event */
 let _spaceHoverEnabledCache = null;
 
@@ -8739,42 +8729,11 @@ function pickColorAtScreen(screenX, screenY, force = false) {
     return;
   }
 
-  // --- Paint-lead compensation -------------------------------------------------
-  // wplace paints the pixel under the cursor on each mousemove and applies our
-  // palette selection ASYNCHRONOUSLY (~1 frame): a colour picked once the cursor
-  // is already on a pixel lands AFTER wplace has painted it, so every pixel takes
-  // the PREVIOUS pixel's colour (a +1 shift). Ordering can't fix it (proven: the
-  // ring updates ~9ms after our click even in capture phase). Instead we pick the
-  // colour of the pixel the cursor is heading TOWARD, so it settles before the
-  // cursor arrives and wplace paints it. Direction is the smoothed screen-space
-  // velocity, which decays to zero at rest — so a stationary cursor leads by 0
-  // and correctly selects the pixel directly under it.
-  const curGx = coords.tileX * 1000 + coords.pixelX;
-  const curGy = coords.tileY * 1000 + coords.pixelY;
-  let leadGx = curGx;
-  let leadGy = curGy;
-  if (_prevScreenX !== null) {
-    _velX = _velX * 0.5 + (screenX - _prevScreenX) * 0.5;
-    _velY = _velY * 0.5 + (screenY - _prevScreenY) * 0.5;
-    if (Math.hypot(_velX, _velY) >= PAINT_LEAD_SPEED) {
-      if (Math.abs(_velX) >= PAINT_LEAD_SPEED * 0.5) { leadGx = curGx + Math.sign(_velX) * PAINT_LEAD_PX; }
-      if (Math.abs(_velY) >= PAINT_LEAD_SPEED * 0.5) { leadGy = curGy + Math.sign(_velY) * PAINT_LEAD_PX; }
-    }
-  }
-  _prevScreenX = screenX;
-  _prevScreenY = screenY;
-
-  const leadTileX = Math.floor(leadGx / 1000);
-  const leadTileY = Math.floor(leadGy / 1000);
-  const leadPixelX = leadGx - leadTileX * 1000;
-  const leadPixelY = leadGy - leadTileY * 1000;
-
-  // Colour of the lead pixel; fall back to the pixel under the cursor when the
-  // template has no pixel there (edge of the art / moving off it).
-  let color = templateManager.getTemplatePixelColorAt(leadTileX, leadTileY, leadPixelX, leadPixelY);
-  if (!color) {
-    color = templateManager.getTemplatePixelColorAt(coords.tileX, coords.tileY, coords.pixelX, coords.pixelY);
-  }
+  // Reactive selection: the colour tracks the pixel directly under the cursor —
+  // no predictive leading. (wplace applies the palette selection asynchronously,
+  // so very fast sweeps over dithered areas can still land a pixel ~1 off; there
+  // is no reliable way around that from a userscript — see the space-hover notes.)
+  const color = templateManager.getTemplatePixelColorAt(coords.tileX, coords.tileY, coords.pixelX, coords.pixelY);
   if (!color) {
     return;
   }
@@ -8786,12 +8745,25 @@ function pickColorAtScreen(screenX, screenY, force = false) {
             // our cached last-pick, which may be stale after a manual change).
   }
 
+  // Boundary hysteresis: when moving to a different pixel that would change the
+  // colour, only accept once the cursor is well inside the new pixel. Prevents
+  // rapid colour flip-flop when the cursor lingers or jitters on a pixel border.
+  const EDGE_PADDING = 0.15; // 15% dead zone from each edge
+  const samePixel = (coords.tileX === lastPickedTileX && coords.tileY === lastPickedTileY &&
+                     coords.pixelX === lastPickedPixelX && coords.pixelY === lastPickedPixelY);
+  if (!force && !samePixel && lastPickedColorKey !== null) {
+    const { fracX, fracY } = coords;
+    if (fracX < EDGE_PADDING || fracX > (1 - EDGE_PADDING) ||
+        fracY < EDGE_PADDING || fracY > (1 - EDGE_PADDING)) {
+      return; // Too close to pixel edge, skip colour switch
+    }
+  }
+
   const colorId = RGB_TO_COLOR_ID[rgbKey];
   if (!colorId) {
     return;
   }
 
-  // No boundary hysteresis — the lead compensation above handles alignment.
   const colorButton = document.querySelector(`button#${CSS.escape(colorId)}`);
   if (colorButton) {
     // 'ring-primary' is wplace's current "selected swatch" marker. Skip the
