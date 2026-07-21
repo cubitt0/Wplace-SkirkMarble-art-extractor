@@ -105,40 +105,52 @@ inject(() => {
   const consoleStyle = script?.getAttribute('bm-cStyle') || ''; // Gets the console style value that was passed in. Defaults to no styling if nothing was found
   const fetchedBlobQueue = new Map(); // Blobs being processed
 
-  // Observer to wait for the map to be ready and set window.bmmap
+  // Observer to wait for the map to be ready and set window.bmmap.
+  //
+  // We discover the map instance by briefly patching Map.prototype.values to inspect the
+  // app's internal maps. This patch is GLOBAL, so it MUST be non-destructive: we always hand
+  // the caller a fresh, un-consumed iterator. The previous implementation consumed the
+  // iterator with Array.from(...) and then returned that same (now-empty) iterator, which
+  // silently broke every Map.values() consumer inside wplace/maplibre — map click handling,
+  // pixel selection, painter details — whenever bmmap was never found and the patch stayed
+  // installed forever.
   const observer = new MutationObserver(mutations => {
     try {
-      const original = Map.prototype.values;
-      Map.prototype.values = function () {
-        if (Array.from(this).some(arr => arr.some(x => x && x.color))) {
-          return original.call(this);
+      // Don't stack wrappers if the observer fires repeatedly before bmmap is found.
+      if (Map.prototype.values.__bmPatched) { return; }
+
+      const original = Map.prototype.values; // Native Map.prototype.values
+
+      const patched = function () {
+        // Materialize a throwaway copy for inspection so the iterator we return stays fresh.
+        let entries;
+        try {
+          entries = Array.from(original.call(this));
+        } catch (e) {
+          return original.call(this); // On any inspection failure, behave like the native method.
         }
-        const temp = original.call(this);
-        const entries = Array.from(temp);
-        
-        if(entries && entries.filter(x=>x['maps'] instanceof Set).length == 0) {
-          return temp;
-        }
-        entries.forEach((x, index) => {
+
+        // Only the app's map registry has values that carry a `maps` Set.
+        if (entries.some(x => x && x['maps'] instanceof Set)) {
+          entries.forEach((x) => {
             if (x && x['maps'] instanceof Set) {
-                Array.from(x['maps']).forEach((y, mapIndex) => {
-                    if(y){
-                      var flyTo = y.flyTo || y['flyTo'];
-                      if (flyTo) {
-                          window.bmmap = y;
-                          Map.prototype.values = original;
-                          observer.disconnect();
-                      }
-                    }
-                });
+              x['maps'].forEach((y) => {
+                if (y && (y.flyTo || y['flyTo'])) {
+                  window.bmmap = y; // Found the maplibre map instance
+                  Map.prototype.values = original; // Restore the native method immediately
+                  observer.disconnect();
+                }
+              });
             }
-            else {
-              return temp;
-            }
-        });
-        
-        return temp;
+          });
+        }
+
+        // Always return a fresh iterator — never the one consumed above.
+        return original.call(this);
       };
+
+      patched.__bmPatched = true; // Marker so we never wrap an already-patched function
+      Map.prototype.values = patched;
     }
     catch (e){
     }
