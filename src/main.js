@@ -163,19 +163,34 @@ inject(() => {
     // The modified blob won't have an endpoint, so we ignore any message without one.
     if ((source == 'blue-marble') && !!blobID && !!blobData && !endpoint) {
 
-      const callback = fetchedBlobQueue.get(blobID); // Retrieves the blob based on the UUID
+      const entry = fetchedBlobQueue.get(blobID); // Retrieves the queue entry based on the UUID
 
-      // If the blobID is a valid function...
-      if (typeof callback === 'function') {
+      // Each queue entry retains both a resolver (settles with the processed blob) and a
+      // resolveOriginal fallback (settles with the untouched response). We must always settle
+      // the pending fetch so wplace's `await fetch(...)` is never left hanging.
+      try {
+        if (entry && typeof entry.resolve === 'function') {
 
-        callback(blobData); // ...Retrieve the blob data from the blobID function
-      } else {
-        // ...else the blobID is unexpected. We don't know what it is, but we know for sure it is not a blob. This means we ignore it.
+          entry.resolve(blobData); // ...Settle the pending fetch with the processed blob
+        } else if (entry && typeof entry.resolveOriginal === 'function') {
+          // The entry exists but has no usable resolver. Settle with the original response
+          // instead of dropping it, so the fetch still completes.
 
-        console.warn(`%c${name}%c: Attempted to retrieve a blob (%s) from queue, but the blobID was not a function! Skipping...`, consoleStyle, '', blobID);
+          console.warn(`%c${name}%c: Blob (%s) had no usable resolver; settling with the original response...`, consoleStyle, '', blobID);
+          entry.resolveOriginal();
+        } else {
+          // No pending entry (e.g. already settled by the timeout fallback, or an unknown ID).
+          // There is nothing left to resolve.
+
+          console.warn(`%c${name}%c: Attempted to retrieve a blob (%s) from queue, but no pending entry was found! Skipping...`, consoleStyle, '', blobID);
+        }
+      } catch (err) {
+        // Never leave the fetch hanging — fall back to the original response on any error.
+        console.error(`%c${name}%c: Error while settling blob (%s); falling back to the original response.`, consoleStyle, '', blobID, err);
+        if (entry && typeof entry.resolveOriginal === 'function') { entry.resolveOriginal(); }
       }
 
-      fetchedBlobQueue.delete(blobID); // Delete the blob from the queue, because we don't need to process it again
+      fetchedBlobQueue.delete(blobID); // Delete the entry from the queue, because we don't need to process it again
     }
   });
 
@@ -229,6 +244,16 @@ inject(() => {
 
       const blob = await cloned.blob(); // The original blob
 
+      // Builds the original, untouched response from the already-read bytes. Used for every
+      // fallback path so a failed/slow template round-trip never leaves wplace's fetch pending.
+      // Constructing a Response from a Blob does not consume the Blob, so this can be called
+      // more than once without double-consuming the body.
+      const buildOriginalResponse = () => new Response(blob, {
+        headers: cloned.headers,
+        status: cloned.status,
+        statusText: cloned.statusText
+      });
+
       // Since this code does not run in the userscript, we can't use debugLog().
       // console.log(`%c${name}%c: ${fetchedBlobQueue.size} Sending IMAGE message about endpoint "${endpointName}"`, consoleStyle, '');
 
@@ -236,20 +261,52 @@ inject(() => {
       return new Promise((resolve) => {
         const blobUUID = crypto.randomUUID(); // Generates a random UUID
 
-        // Store the blob while we wait for processing
-        fetchedBlobQueue.set(blobUUID, (blobProcessed) => {
-          // The response that triggers when the blob is finished processing
+        let settled = false; // Guards against settling the same fetch more than once
+        let timeoutId; // Timeout that falls back to the original response
 
-          // Creates a new response
-          resolve(new Response(blobProcessed, {
-            headers: cloned.headers,
-            status: cloned.status,
-            statusText: cloned.statusText
-          }));
+        // Store the resolver + fallback while we wait for processing. The message listener
+        // calls resolve() with the processed blob, or resolveOriginal() to settle untouched.
+        fetchedBlobQueue.set(blobUUID, {
+          resolve: (blobProcessed) => {
+            // The response that triggers when the blob is finished processing
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timeoutId);
 
-          // Since this code does not run in the userscript, we can't use debugLog().
-          // debugLog(`%c${name}%c: ${fetchedBlobQueue.size} Processed blob "${blobUUID}"`, consoleStyle, '');
+            // Creates a new response — but if the processed blob is unusable, fall back to
+            // the original so the fetch still settles.
+            try {
+              resolve(new Response(blobProcessed, {
+                headers: cloned.headers,
+                status: cloned.status,
+                statusText: cloned.statusText
+              }));
+            } catch (err) {
+              console.error(`%c${name}%c: Failed to build processed response for blob "%s"; using the original.`, consoleStyle, '', blobUUID, err);
+              resolve(buildOriginalResponse());
+            }
+
+            // Since this code does not run in the userscript, we can't use debugLog().
+            // debugLog(`%c${name}%c: ${fetchedBlobQueue.size} Processed blob "${blobUUID}"`, consoleStyle, '');
+          },
+          resolveOriginal: () => {
+            // Settles the fetch with the untouched response (failure/timeout fallback)
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timeoutId);
+            resolve(buildOriginalResponse());
+          }
         });
+
+        // Timeout fallback: if the processed blob never comes back, settle with the original
+        // response and drop the entry so wplace's map click can always complete.
+        timeoutId = setTimeout(() => {
+          if (settled) { return; }
+          settled = true;
+          fetchedBlobQueue.delete(blobUUID);
+          console.warn(`%c${name}%c: Blob "%s" processing timed out; settling with the original response.`, consoleStyle, '', blobUUID);
+          resolve(buildOriginalResponse());
+        }, 5000);
 
         window.postMessage({
           source: 'blue-marble',
@@ -265,6 +322,10 @@ inject(() => {
         // debugLog(`Endpoint: ${endpointName}\nThere are ${fetchedBlobQueue.size} blobs processing...\nBlink: ${blink.toLocaleString()}\nTime Since Blink: ${String(Math.floor(elapsed/60000)).padStart(2,'0')}:${String(Math.floor(elapsed/1000) % 60).padStart(2,'0')}.${String(elapsed % 1000).padStart(3,'0')} MM:SS.mmm`);
         console.error(`Exception stack:`, exception);
         console.groupEnd();
+
+        // Ensure the fetch always settles, even if the processing path threw — return the
+        // original untouched response instead of leaving wplace's await fetch(...) pending.
+        return buildOriginalResponse();
       });
 
       // cloned.blob().then(blob => {
