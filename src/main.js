@@ -144,7 +144,14 @@ inject(() => {
     } catch (e) { return false; }
   };
 
+  const BM_PROBE_KEY = 'transform'; // MapLibre's Camera constructor assigns this on the map
+  let bmProbeInstalled = false;
+
   const bmUninstallDetect = () => {
+    if (bmProbeInstalled) {
+      bmProbeInstalled = false;
+      try { delete Object.prototype[BM_PROBE_KEY]; } catch (e) {}
+    }
     Map.prototype.set = bmNative.mapSet;
     Map.prototype.get = bmNative.mapGet;
     Map.prototype.values = bmNative.mapValues;
@@ -222,6 +229,27 @@ inject(() => {
         console.warn(`%c${name}%c: Map instance not found within ${BM_DETECT_TIMEOUT_MS}ms; detection hooks removed.`, consoleStyle, '');
       }
     }, BM_DETECT_TIMEOUT_MS);
+
+    // Construction-time detection. wplace never exposes its map through a Map/Set, so we
+    // watch for MapLibre's own `this.transform = ...` assignment instead. The accessor sits
+    // on Object.prototype, so it must forward the write faithfully (as a normal own
+    // property) and disappear the moment we have the map. Objects that inherit `transform`
+    // from a nearer prototype (CSSStyleDeclaration, canvas contexts) never reach this.
+    try {
+      if (!Object.getOwnPropertyDescriptor(Object.prototype, BM_PROBE_KEY)) {
+        Object.defineProperty(Object.prototype, BM_PROBE_KEY, {
+          configurable: true,
+          enumerable: false,
+          get() { return undefined; },
+          set(v) {
+            // Give the owner exactly the plain own property it was assigning
+            Object.defineProperty(this, BM_PROBE_KEY, { value: v, writable: true, enumerable: true, configurable: true });
+            if (!window.bmmap && bmLooksLikeMap(this)) { bmClaim(this, 'Object.prototype.transform'); }
+          }
+        });
+        bmProbeInstalled = true;
+      }
+    } catch (e) {}
 
     console.log(`%c${name}%c: injected script running; map detection hooks installed.`, consoleStyle, '');
   } catch (e) {
