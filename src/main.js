@@ -197,27 +197,37 @@ inject(() => {
     } catch (e) {} finally { bmSweeping = false; }
   };
 
-  // Write hooks — catch the instance the moment the app stores it (most reliable path)
-  Map.prototype.set = function (k, v) { const r = bmNative.mapSet.call(this, k, v); if (!window.bmmap) { bmClaim(v, 'Map.set'); } return r; };
-  Set.prototype.add = function (v) { const r = bmNative.setAdd.call(this, v); if (!window.bmmap) { bmClaim(v, 'Set.add'); } return r; };
-  WeakMap.prototype.set = function (k, v) { const r = bmNative.weakMapSet.call(this, k, v); if (!window.bmmap) { bmClaim(v, 'WeakMap.set'); } return r; };
+  // Installing the hooks must NEVER be able to take down the rest of the userscript (the
+  // fetch override, template drawing, ...). If anything here throws we roll back to the
+  // native built-ins and carry on without map detection.
+  try {
+    // Write hooks — catch the instance the moment the app stores it (most reliable path)
+    Map.prototype.set = function (k, v) { const r = bmNative.mapSet.call(this, k, v); if (!window.bmmap) { bmClaim(v, 'Map.set'); } return r; };
+    Set.prototype.add = function (v) { const r = bmNative.setAdd.call(this, v); if (!window.bmmap) { bmClaim(v, 'Set.add'); } return r; };
+    WeakMap.prototype.set = function (k, v) { const r = bmNative.weakMapSet.call(this, k, v); if (!window.bmmap) { bmClaim(v, 'WeakMap.set'); } return r; };
 
-  // Read hooks — catch it if it was already stored before we loaded
-  Map.prototype.get = function (k) { const r = bmNative.mapGet.call(this, k); if (!window.bmmap) { bmClaim(r, 'Map.get'); } return r; };
-  Map.prototype.values = function () { bmSweep(this, 'Map.values'); return bmNative.mapValues.call(this); };
-  Map.prototype.entries = function () { bmSweep(this, 'Map.entries'); return bmNative.mapEntries.call(this); };
-  Map.prototype.forEach = function (cb, t) { bmSweep(this, 'Map.forEach'); return bmNative.mapForEach.call(this, cb, t); };
-  Map.prototype[Symbol.iterator] = function () { bmSweep(this, 'Map@@iterator'); return bmNative.mapIterator.call(this); };
-  Set.prototype.values = function () { bmSweep(this, 'Set.values'); return bmNative.setValues.call(this); };
-  Set.prototype.forEach = function (cb, t) { bmSweep(this, 'Set.forEach'); return bmNative.setForEach.call(this, cb, t); };
+    // Read hooks — catch it if it was already stored before we loaded
+    Map.prototype.get = function (k) { const r = bmNative.mapGet.call(this, k); if (!window.bmmap) { bmClaim(r, 'Map.get'); } return r; };
+    Map.prototype.values = function () { bmSweep(this, 'Map.values'); return bmNative.mapValues.call(this); };
+    Map.prototype.entries = function () { bmSweep(this, 'Map.entries'); return bmNative.mapEntries.call(this); };
+    Map.prototype.forEach = function (cb, t) { bmSweep(this, 'Map.forEach'); return bmNative.mapForEach.call(this, cb, t); };
+    Map.prototype[Symbol.iterator] = function () { bmSweep(this, 'Map@@iterator'); return bmNative.mapIterator.call(this); };
+    Set.prototype.values = function () { bmSweep(this, 'Set.values'); return bmNative.setValues.call(this); };
+    Set.prototype.forEach = function (cb, t) { bmSweep(this, 'Set.forEach'); return bmNative.setForEach.call(this, cb, t); };
 
-  // Hard stop: never leave the page's built-ins patched indefinitely
-  setTimeout(() => {
-    if (!window.bmmap) {
-      bmUninstallDetect();
-      console.warn(`%c${name}%c: Map instance not found within ${BM_DETECT_TIMEOUT_MS}ms; detection hooks removed.`, consoleStyle, '');
-    }
-  }, BM_DETECT_TIMEOUT_MS);
+    // Hard stop: never leave the page's built-ins patched indefinitely
+    setTimeout(() => {
+      if (!window.bmmap) {
+        bmUninstallDetect();
+        console.warn(`%c${name}%c: Map instance not found within ${BM_DETECT_TIMEOUT_MS}ms; detection hooks removed.`, consoleStyle, '');
+      }
+    }, BM_DETECT_TIMEOUT_MS);
+
+    console.log(`%c${name}%c: injected script running; map detection hooks installed.`, consoleStyle, '');
+  } catch (e) {
+    try { bmUninstallDetect(); } catch (e2) {}
+    console.error(`%c${name}%c: Failed to install map detection hooks; continuing without them.`, consoleStyle, '', e);
+  }
 
   window.addEventListener('message', (event) => {
     const { source, endpoint, blobID, blobData, blink } = event.data;
