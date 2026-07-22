@@ -105,61 +105,119 @@ inject(() => {
   const consoleStyle = script?.getAttribute('bm-cStyle') || ''; // Gets the console style value that was passed in. Defaults to no styling if nothing was found
   const fetchedBlobQueue = new Map(); // Blobs being processed
 
-  // Observer to wait for the map to be ready and set window.bmmap.
+  // ---- MapLibre instance detection (sets window.bmmap) ------------------------------
   //
-  // We discover the map instance by briefly patching Map.prototype.values to inspect the
-  // app's internal maps. This patch is GLOBAL, so it MUST be non-destructive: we always hand
-  // the caller a fresh, un-consumed iterator. The previous implementation consumed the
-  // iterator with Array.from(...) and then returned that same (now-empty) iterator, which
-  // silently broke every Map.values() consumer inside wplace/maplibre — map click handling,
-  // pixel selection, painter details — whenever bmmap was never found and the patch stayed
-  // installed forever.
-  const observer = new MutationObserver(mutations => {
+  // wplace keeps its MapLibre map inside a module closure, so it cannot be reached by
+  // walking `window` or the DOM. We instead watch the built-in Map/Set methods the app uses
+  // to store and read that instance.
+  //
+  // Rules this code must obey (an earlier version broke wplace badly by ignoring them):
+  //  1. Every hook is NON-DESTRUCTIVE — it always returns the real, untouched result.
+  //     Never hand back an iterator that we have already consumed.
+  //  2. Hooks uninstall themselves the moment the map is found, and unconditionally after
+  //     BM_DETECT_TIMEOUT_MS, so the page's built-ins are never left patched forever.
+  //  3. Hot paths stay cheap: deep sweeps run at most once per container.
+  const BM_DETECT_TIMEOUT_MS = 60000;
+
+  const bmNative = {
+    mapSet: Map.prototype.set,
+    mapGet: Map.prototype.get,
+    mapValues: Map.prototype.values,
+    mapEntries: Map.prototype.entries,
+    mapForEach: Map.prototype.forEach,
+    mapIterator: Map.prototype[Symbol.iterator],
+    setAdd: Set.prototype.add,
+    setValues: Set.prototype.values,
+    setForEach: Set.prototype.forEach,
+    weakMapSet: WeakMap.prototype.set
+  };
+
+  const bmSwept = new WeakSet(); // Containers already deep-swept, so we only pay that cost once
+  let bmSweeping = false; // Re-entrancy guard
+
+  // Duck-types a MapLibre GL map instance
+  const bmLooksLikeMap = (o) => {
+    if (!o || typeof o !== 'object') { return false; }
     try {
-      // Don't stack wrappers if the observer fires repeatedly before bmmap is found.
-      if (Map.prototype.values.__bmPatched) { return; }
+      return typeof o.flyTo === 'function' && typeof o.project === 'function'
+          && typeof o.unproject === 'function' && typeof o.getCanvas === 'function';
+    } catch (e) { return false; }
+  };
 
-      const original = Map.prototype.values; // Native Map.prototype.values
+  const bmUninstallDetect = () => {
+    Map.prototype.set = bmNative.mapSet;
+    Map.prototype.get = bmNative.mapGet;
+    Map.prototype.values = bmNative.mapValues;
+    Map.prototype.entries = bmNative.mapEntries;
+    Map.prototype.forEach = bmNative.mapForEach;
+    Map.prototype[Symbol.iterator] = bmNative.mapIterator;
+    Set.prototype.add = bmNative.setAdd;
+    Set.prototype.values = bmNative.setValues;
+    Set.prototype.forEach = bmNative.setForEach;
+    WeakMap.prototype.set = bmNative.weakMapSet;
+  };
 
-      const patched = function () {
-        // Materialize a throwaway copy for inspection so the iterator we return stays fresh.
-        let entries;
-        try {
-          entries = Array.from(original.call(this));
-        } catch (e) {
-          return original.call(this); // On any inspection failure, behave like the native method.
-        }
-
-        // Only the app's map registry has values that carry a `maps` Set.
-        if (entries.some(x => x && x['maps'] instanceof Set)) {
-          entries.forEach((x) => {
-            if (x && x['maps'] instanceof Set) {
-              x['maps'].forEach((y) => {
-                if (y && (y.flyTo || y['flyTo'])) {
-                  window.bmmap = y; // Found the maplibre map instance
-                  Map.prototype.values = original; // Restore the native method immediately
-                  observer.disconnect();
-                }
-              });
-            }
+  // Checks a candidate (and the `maps` Set the app has historically nested it in)
+  const bmClaim = (candidate, where) => {
+    if (window.bmmap) { return true; }
+    let found = null;
+    if (bmLooksLikeMap(candidate)) {
+      found = candidate;
+    } else if (candidate && typeof candidate === 'object') {
+      try {
+        if (candidate['maps'] instanceof Set) {
+          bmNative.setForEach.call(candidate['maps'], (y) => {
+            if (!found && bmLooksLikeMap(y)) { found = y; }
           });
         }
-
-        // Always return a fresh iterator — never the one consumed above.
-        return original.call(this);
-      };
-
-      patched.__bmPatched = true; // Marker so we never wrap an already-patched function
-      Map.prototype.values = patched;
+      } catch (e) {}
     }
-    catch (e){
-    }
-  });
+    if (!found) { return false; }
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+    window.bmmap = found; // Found the MapLibre map instance
+    bmUninstallDetect(); // Stop patching the page's built-ins immediately
+    console.log(`%c${name}%c: Map instance found via ${where}`, consoleStyle, '');
+    return true;
+  };
+
+  // Deep-sweeps a container's values once, looking for the map
+  const bmSweep = (container, where) => {
+    if (window.bmmap || bmSweeping) { return; }
+    try {
+      const isMap = container instanceof Map;
+      if (!isMap && !(container instanceof Set)) { return; }
+      if (bmSwept.has(container)) { return; }
+      bmSwept.add(container);
+      const size = container.size;
+      if (!size || size > 5000) { return; }
+      bmSweeping = true;
+      (isMap ? bmNative.mapForEach : bmNative.setForEach).call(container, (v) => {
+        if (!window.bmmap) { bmClaim(v, where); }
+      });
+    } catch (e) {} finally { bmSweeping = false; }
+  };
+
+  // Write hooks — catch the instance the moment the app stores it (most reliable path)
+  Map.prototype.set = function (k, v) { const r = bmNative.mapSet.call(this, k, v); if (!window.bmmap) { bmClaim(v, 'Map.set'); } return r; };
+  Set.prototype.add = function (v) { const r = bmNative.setAdd.call(this, v); if (!window.bmmap) { bmClaim(v, 'Set.add'); } return r; };
+  WeakMap.prototype.set = function (k, v) { const r = bmNative.weakMapSet.call(this, k, v); if (!window.bmmap) { bmClaim(v, 'WeakMap.set'); } return r; };
+
+  // Read hooks — catch it if it was already stored before we loaded
+  Map.prototype.get = function (k) { const r = bmNative.mapGet.call(this, k); if (!window.bmmap) { bmClaim(r, 'Map.get'); } return r; };
+  Map.prototype.values = function () { bmSweep(this, 'Map.values'); return bmNative.mapValues.call(this); };
+  Map.prototype.entries = function () { bmSweep(this, 'Map.entries'); return bmNative.mapEntries.call(this); };
+  Map.prototype.forEach = function (cb, t) { bmSweep(this, 'Map.forEach'); return bmNative.mapForEach.call(this, cb, t); };
+  Map.prototype[Symbol.iterator] = function () { bmSweep(this, 'Map@@iterator'); return bmNative.mapIterator.call(this); };
+  Set.prototype.values = function () { bmSweep(this, 'Set.values'); return bmNative.setValues.call(this); };
+  Set.prototype.forEach = function (cb, t) { bmSweep(this, 'Set.forEach'); return bmNative.setForEach.call(this, cb, t); };
+
+  // Hard stop: never leave the page's built-ins patched indefinitely
+  setTimeout(() => {
+    if (!window.bmmap) {
+      bmUninstallDetect();
+      console.warn(`%c${name}%c: Map instance not found within ${BM_DETECT_TIMEOUT_MS}ms; detection hooks removed.`, consoleStyle, '');
+    }
+  }, BM_DETECT_TIMEOUT_MS);
 
   window.addEventListener('message', (event) => {
     const { source, endpoint, blobID, blobData, blink } = event.data;

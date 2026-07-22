@@ -89,7 +89,19 @@ let resultTerser = await terser.minify(resultEsbuildJS.text, {
     properties: {
       // regex: /.*/, // Yes, I am aware I should be using a RegEx. Yes, like you, I am also suprised the userscript still functions
       keep_quoted: true, // Should names in quotes be preserved?
-      reserved: [] // What properties should be preserved?
+      // Properties that live on objects we do NOT own (MapLibre's map instance, wplace
+      // internals, our own window global). Mangling these renames our *access* to a name
+      // the real object never has, so the call silently resolves to undefined. Anything
+      // called on window.bmmap or on wplace internals MUST be listed here.
+      reserved: [
+        'bmmap', 'maps',
+        'flyTo', 'jumpTo', 'easeTo',
+        'project', 'unproject',
+        'getCanvas', 'getCenter', 'getZoom', 'getBounds',
+        'setCenter', 'setZoom',
+        'queryRenderedFeatures',
+        'transform'
+      ] // What properties should be preserved?
     },
   },
   format: {
